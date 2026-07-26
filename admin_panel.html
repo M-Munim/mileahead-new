@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>MilesAhead — Admin Panel (Car Wash Orders)</title>
+<style>
+  :root{
+    --teal:#12564F; --teal-dark:#0D423C; --teal-light:#E4EFEE;
+    --ink:#1C1F1E; --gray-600:#6B7370; --gray-300:#D8DDDB; --gray-100:#F4F5F4;
+    --bg:#EDEEED; --white:#FFFFFF; --black:#161616;
+    --amber:#E8A93B; --amber-bg:#FCF2DF;
+    --blue:#3E7BD6; --blue-bg:#EAF1FC;
+    --green:#3C9A6E; --green-bg:#E6F5EC;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{ background:var(--bg); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; color:var(--ink); padding:40px;}
+  .board-title{ font-size:13px; letter-spacing:.08em; text-transform:uppercase; color:var(--gray-600); margin-bottom:24px; font-weight:600;}
+  .stack{ display:flex; flex-direction:column; gap:36px; }
+
+  .browser{
+    background:var(--white); border-radius:14px; box-shadow:0 20px 50px rgba(0,0,0,.15); overflow:hidden; border:1px solid var(--gray-300);
+  }
+  .browser-bar{
+    height:34px; background:var(--gray-100); display:flex; align-items:center; gap:6px; padding:0 12px; border-bottom:1px solid var(--gray-300);
+  }
+  .dot{width:9px;height:9px;border-radius:50%; background:var(--gray-300);}
+  .frame-label{ font-size:13px; color:var(--gray-600); margin-bottom:10px; font-weight:600; }
+
+  .app{ display:flex; height:640px; }
+  .sidebar{
+    width:210px; background:var(--teal-dark); color:#fff; flex:0 0 auto; padding:20px 16px; display:flex; flex-direction:column;
+  }
+  .logo{ font-weight:800; font-size:14px; margin-bottom:26px; letter-spacing:.02em; }
+  .logo span{ color:#8FCABF; }
+  .navitem{
+    font-size:12.5px; padding:10px 12px; border-radius:8px; margin-bottom:4px; color:#CFE3DF; display:flex; gap:9px; align-items:center;
+  }
+  .navitem.active{ background:rgba(255,255,255,.12); color:#fff; font-weight:700; }
+  .sidebar .spacer{ margin-top:auto; font-size:11px; color:#8FB3AC; padding:10px 12px; }
+
+  .main{ flex:1; background:var(--gray-100); display:flex; flex-direction:column; overflow:hidden;}
+  .topbar{
+    background:var(--white); border-bottom:1px solid var(--gray-300); padding:16px 24px; display:flex; align-items:center; justify-content:space-between;
+  }
+  .topbar h1{ font-size:16px; font-weight:800; }
+  .topbar .sub{ font-size:11px; color:var(--gray-600); margin-top:2px; }
+  .searchbox{
+    background:var(--gray-100); border:1px solid var(--gray-300); border-radius:9px; padding:8px 12px; font-size:12px; color:var(--gray-600); width:220px;
+  }
+
+  .tabs{ display:flex; gap:8px; padding:14px 24px 0; }
+  .tab{ font-size:11.5px; font-weight:700; padding:7px 13px; border-radius:20px; color:var(--gray-600); background:var(--white); border:1px solid var(--gray-300);}
+  .tab.active{ background:var(--teal); color:#fff; border-color:var(--teal); }
+  .tab .count{ opacity:.7; font-weight:600; margin-left:3px;}
+
+  .tablewrap{ padding:16px 24px; overflow:auto; flex:1; }
+  table{ width:100%; border-collapse:collapse; background:var(--white); border-radius:12px; overflow:hidden; border:1px solid var(--gray-300);}
+  th{
+    text-align:left; font-size:10px; text-transform:uppercase; letter-spacing:.04em; color:var(--gray-600); background:var(--gray-100);
+    padding:10px 14px; font-weight:700; border-bottom:1px solid var(--gray-300);
+  }
+  td{ padding:12px 14px; font-size:12px; border-bottom:1px solid var(--gray-300); vertical-align:middle; }
+  tr:last-child td{ border-bottom:none; }
+  tr.highlight{ background:var(--teal-light); }
+  .cust{ font-weight:700; }
+  .cust-sub{ font-size:10.5px; color:var(--gray-600); }
+  .status-pill{ font-size:10px; font-weight:700; padding:4px 10px; border-radius:20px; display:inline-block; }
+  .status-pill.pending{ background:var(--amber-bg); color:#966A16; }
+  .status-pill.confirmed{ background:var(--blue-bg); color:var(--blue); }
+  .status-pill.enroute{ background:var(--teal-light); color:var(--teal-dark); }
+  .status-pill.arrived{ background:var(--teal-light); color:var(--teal-dark); }
+  .status-pill.completed{ background:var(--green-bg); color:var(--green); }
+  .btn-sm{
+    font-size:11px; font-weight:700; padding:7px 12px; border-radius:8px; border:1.5px solid var(--gray-300); background:var(--white); color:var(--ink); white-space:nowrap;
+  }
+  .btn-sm.primary{ background:var(--black); color:#fff; border-color:var(--black); }
+  .btn-sm.teal{ background:var(--teal); color:#fff; border-color:var(--teal); }
+  .btn-sm.green{ background:var(--green); color:#fff; border-color:var(--green); }
+
+  /* order detail drawer */
+  .drawer-app{ position:relative; }
+  .drawer{
+    position:absolute; top:0; right:0; bottom:0; width:340px; background:var(--white); border-left:1px solid var(--gray-300);
+    box-shadow:-10px 0 30px rgba(0,0,0,.08); display:flex; flex-direction:column;
+  }
+  .drawer-head{ padding:18px 20px; border-bottom:1px solid var(--gray-300); display:flex; justify-content:space-between; align-items:flex-start;}
+  .drawer-head .oid{ font-size:14px; font-weight:800; }
+  .drawer-head .odate{ font-size:11px; color:var(--gray-600); margin-top:2px;}
+  .close-x{ font-size:16px; color:var(--gray-600); }
+  .drawer-body{ padding:18px 20px; overflow-y:auto; flex:1; }
+  .dsec-title{ font-size:10px; text-transform:uppercase; letter-spacing:.04em; color:var(--gray-600); font-weight:700; margin:14px 0 8px;}
+  .dsec-title:first-child{ margin-top:0; }
+  .contact-card{
+    background:var(--gray-100); border-radius:10px; padding:12px; display:flex; align-items:center; gap:10px; margin-bottom:4px;
+  }
+  .avatar-sm{ width:34px;height:34px;border-radius:50%; background:var(--teal-light); color:var(--teal); font-weight:700; font-size:13px; display:flex; align-items:center; justify-content:center;}
+  .cinfo .cname{ font-size:12.5px; font-weight:700;}
+  .cinfo .cphone{ font-size:11px; color:var(--gray-600);}
+  .call-btn{ margin-left:auto; width:32px;height:32px;border-radius:50%; background:var(--teal); color:#fff; display:flex; align-items:center; justify-content:center; font-size:14px;}
+  .kv{ display:flex; justify-content:space-between; font-size:12px; padding:6px 0; border-bottom:1px dashed var(--gray-300); }
+  .kv:last-child{ border-bottom:none; }
+  .kv .k{ color:var(--gray-600); }
+  .kv .v{ font-weight:700; }
+  .status-track{ margin-top:6px; }
+  .strack-item{ display:flex; align-items:center; gap:8px; font-size:11.5px; padding:6px 0; color:var(--gray-600); }
+  .strack-item.done{ color:var(--ink); font-weight:700; }
+  .strack-dot{ width:8px;height:8px; border-radius:50%; background:var(--gray-300); }
+  .strack-item.done .strack-dot{ background:var(--green); }
+  .strack-item.now .strack-dot{ background:var(--teal); box-shadow:0 0 0 4px var(--teal-light); }
+
+  .drawer-actions{ padding:16px 20px; border-top:1px solid var(--gray-300); display:flex; flex-direction:column; gap:8px;}
+  .action-btn{
+    padding:13px; border-radius:10px; font-size:13px; font-weight:800; text-align:center; display:flex; align-items:center; justify-content:center; gap:6px;
+  }
+  .action-btn.teal{ background:var(--teal); color:#fff; }
+  .action-btn.green{ background:var(--green); color:#fff; }
+  .action-btn.ghost{ background:var(--white); border:1.5px solid var(--gray-300); color:var(--ink); }
+  .hint{ font-size:10px; color:var(--gray-600); text-align:center; margin-top:2px; }
+</style>
+</head>
+<body>
+
+<div class="board-title">MilesAhead Admin Panel — Car Wash Orders (manual cleaner management)</div>
+
+<div class="stack">
+
+  <!-- SCREEN 1: ORDERS DASHBOARD -->
+  <div>
+    <div class="frame-label">1 — Orders Dashboard</div>
+    <div class="browser">
+      <div class="browser-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+      <div class="app">
+        <div class="sidebar">
+          <div class="logo">Miles<span>Ahead</span> Admin</div>
+          <div class="navitem active">📋 Orders</div>
+          <div class="navitem">👤 Customers</div>
+          <div class="navitem">💧 Services &amp; Pricing</div>
+          <div class="navitem">📊 Reports</div>
+          <div class="navitem">⚙️ Settings</div>
+          <div class="spacer">Logged in as<br><b style="color:#fff;">Admin · Fatima</b></div>
+        </div>
+        <div class="main">
+          <div class="topbar">
+            <div><h1>Car Wash Orders</h1><div class="sub">Manage bookings and update status as cleaners report in</div></div>
+            <div class="searchbox">🔍 Search order, customer, phone…</div>
+          </div>
+          <div class="tabs">
+            <div class="tab active">All <span class="count">18</span></div>
+            <div class="tab">Pending <span class="count">3</span></div>
+            <div class="tab">Confirmed <span class="count">4</span></div>
+            <div class="tab">En Route <span class="count">2</span></div>
+            <div class="tab">Arrived <span class="count">1</span></div>
+            <div class="tab">Completed <span class="count">8</span></div>
+          </div>
+          <div class="tablewrap">
+            <table>
+              <tr><th>Order</th><th>Customer</th><th>Service</th><th>Location</th><th>Time</th><th>Status</th><th></th></tr>
+              <tr class="highlight">
+                <td><b>#CW-1042</b></td>
+                <td><div class="cust">Jane Doe</div><div class="cust-sub">+974 5511 2233</div></td>
+                <td>Classic Care · Sedan</td>
+                <td>Al Waab St</td>
+                <td>Today, 4:00 PM</td>
+                <td><span class="status-pill pending">Pending Confirmation</span></td>
+                <td><button class="btn-sm primary">Confirm</button></td>
+              </tr>
+              <tr>
+                <td><b>#CW-1041</b></td>
+                <td><div class="cust">Mohammed A.</div><div class="cust-sub">+974 3344 5566</div></td>
+                <td>Premium Detail · SUV</td>
+                <td>Villa 22, West Bay</td>
+                <td>Today, 3:30 PM</td>
+                <td><span class="status-pill confirmed">Confirmed</span></td>
+                <td><button class="btn-sm teal">Mark En Route</button></td>
+              </tr>
+              <tr>
+                <td><b>#CW-1039</b></td>
+                <td><div class="cust">Sara K.</div><div class="cust-sub">+974 7788 9900</div></td>
+                <td>Quick Shine + Hygiene · 4x4</td>
+                <td>The Pearl</td>
+                <td>Today, 2:15 PM</td>
+                <td><span class="status-pill enroute">Cleaner En Route</span></td>
+                <td><button class="btn-sm teal">Mark Arrived</button></td>
+              </tr>
+              <tr>
+                <td><b>#CW-1037</b></td>
+                <td><div class="cust">Yusuf R.</div><div class="cust-sub">+974 6611 4477</div></td>
+                <td>Classic Care · Van</td>
+                <td>Al Sadd</td>
+                <td>Today, 1:00 PM</td>
+                <td><span class="status-pill arrived">Cleaner Arrived</span></td>
+                <td><button class="btn-sm green">Mark Completed</button></td>
+              </tr>
+              <tr>
+                <td><b>#CW-0981</b></td>
+                <td><div class="cust">Layla H.</div><div class="cust-sub">+974 5522 3311</div></td>
+                <td>Quick Shine · SUV</td>
+                <td>Villa 22, West Bay</td>
+                <td>Sat, 12 Jul</td>
+                <td><span class="status-pill completed">Completed</span></td>
+                <td><button class="btn-sm">View</button></td>
+              </tr>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SCREEN 2: ORDER DETAIL DRAWER -->
+  <div>
+    <div class="frame-label">2 — Order Detail (quick-action panel while admin is on the phone with the cleaner)</div>
+    <div class="browser">
+      <div class="browser-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+      <div class="app drawer-app">
+        <div class="sidebar">
+          <div class="logo">Miles<span>Ahead</span> Admin</div>
+          <div class="navitem active">📋 Orders</div>
+          <div class="navitem">👤 Customers</div>
+          <div class="navitem">💧 Services &amp; Pricing</div>
+          <div class="navitem">📊 Reports</div>
+          <div class="navitem">⚙️ Settings</div>
+        </div>
+        <div class="main" style="filter:blur(1.5px); opacity:.6;">
+          <div class="topbar"><div><h1>Car Wash Orders</h1></div></div>
+          <div class="tablewrap">
+            <table>
+              <tr><th>Order</th><th>Customer</th><th>Service</th><th>Status</th></tr>
+              <tr><td>#CW-1039</td><td>Sara K.</td><td>Quick Shine + Hygiene</td><td>En Route</td></tr>
+            </table>
+          </div>
+        </div>
+
+        <div class="drawer">
+          <div class="drawer-head">
+            <div><div class="oid">#CW-1039</div><div class="odate">Booked Today · 12:40 PM</div></div>
+            <div class="close-x">✕</div>
+          </div>
+          <div class="drawer-body">
+            <div class="dsec-title">Customer</div>
+            <div class="contact-card">
+              <div class="avatar-sm">S</div>
+              <div class="cinfo"><div class="cname">Sara K.</div><div class="cphone">+974 7788 9900</div></div>
+              <div class="call-btn">📞</div>
+            </div>
+
+            <div class="dsec-title">Order Details</div>
+            <div class="kv"><span class="k">Package</span><span class="v">Quick Shine</span></div>
+            <div class="kv"><span class="k">Add-on</span><span class="v">Hygiene Plus</span></div>
+            <div class="kv"><span class="k">Vehicle</span><span class="v">4x4 / Pickup</span></div>
+            <div class="kv"><span class="k">Location</span><span class="v">The Pearl, Zone 66</span></div>
+            <div class="kv"><span class="k">Slot</span><span class="v">Today, 2:15 PM</span></div>
+            <div class="kv"><span class="k">Total</span><span class="v">QAR 70</span></div>
+
+            <div class="dsec-title">Cleaner Assigned</div>
+            <div class="contact-card">
+              <div class="avatar-sm">M</div>
+              <div class="cinfo"><div class="cname">Mahesh (Cleaner)</div><div class="cphone">+974 3300 1122</div></div>
+              <div class="call-btn">📞</div>
+            </div>
+
+            <div class="dsec-title">Order Progress</div>
+            <div class="status-track">
+              <div class="strack-item done"><span class="strack-dot"></span> Confirmed — 12:45 PM</div>
+              <div class="strack-item now"><span class="strack-dot"></span> Cleaner En Route — 1:55 PM</div>
+              <div class="strack-item"><span class="strack-dot"></span> Cleaner Arrived</div>
+              <div class="strack-item"><span class="strack-dot"></span> Service Completed</div>
+            </div>
+          </div>
+          <div class="drawer-actions">
+            <div class="action-btn teal">📍 Mark as Arrived</div>
+            <div class="hint">Sends an instant alert to the customer's app</div>
+            <div class="action-btn ghost">Call Customer</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
