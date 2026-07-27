@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Search, Phone, X, MapPin, Clock, Droplets, CheckCircle,
   RotateCcw, ClipboardList,
@@ -8,6 +8,8 @@ import {
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import Toast from '../components/Toast';
+import { bookingService } from '../../utils/axiosInstance';
+import { extractArray } from '../../utils/extractArray';
 
 // ─────────────────────────────────────────────────────────────
 // Order lifecycle model
@@ -33,9 +35,9 @@ const TONE = {
 // What the admin taps next for each status (one tap advances the order).
 const NEXT_ACTION = {
   pending:   { next: 'confirmed', row: 'Confirm',        full: 'Confirm Order',     tone: 'primary' },
-  confirmed: { next: 'enroute',   row: 'Mark En Route',  full: 'Mark En Route',     tone: 'primary' },
-  enroute:   { next: 'arrived',   row: 'Mark Arrived',   full: 'Mark as Arrived',   tone: 'primary', notify: true },
-  arrived:   { next: 'completed', row: 'Mark Completed', full: 'Mark as Completed', tone: 'green',   notify: true },
+  confirmed: { next: 'enroute',   row: 'Mark En Route',  full: 'Mark En Route',     tone: 'primary', notification: 'Cleaner is on the way' },
+  enroute:   { next: 'arrived',   row: 'Mark Arrived',   full: 'Mark as Arrived',   tone: 'primary', notification: 'Cleaner is arrived' },
+  arrived:   { next: 'completed', row: 'Mark Completed', full: 'Mark as Completed', tone: 'green',   notification: 'Job completed' },
 };
 
 const TABS = [
@@ -46,8 +48,6 @@ const TABS = [
   { key: 'arrived',   label: 'Arrived' },
   { key: 'completed', label: 'Completed' },
 ];
-
-const STORAGE_KEY = 'miles_carwash_orders';
 
 // ─────────────────────────────────────────────────────────────
 // Demo data (persists locally as the admin clicks through statuses)
@@ -83,6 +83,65 @@ const getInitial = (name) => (name?.trim()?.[0] || '?').toUpperCase();
 const telHref = (phone) => `tel:${(phone || '').replace(/[^\d+]/g, '')}`;
 const timeNow = () =>
   new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+const normalizeStatus = (status) => {
+  const key = String(status || '').toLowerCase().replace(/[\s_-]/g, '');
+  if (key.includes('complete')) return 'completed';
+  if (key.includes('arrive')) return 'arrived';
+  if (key.includes('enroute') || key.includes('onroute') || key.includes('ontheway')) return 'enroute';
+  if (key.includes('confirm') || key.includes('accept') || key.includes('schedule')) return 'confirmed';
+  return 'pending';
+};
+
+const formatDateTime = (date, time) => {
+  if (date && time) return `${date}, ${time}`;
+  return date || time || 'N/A';
+};
+
+const formatHistoryTime = (value) => {
+  if (!value) return undefined;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+};
+
+const mapCarWashBooking = (booking) => {
+  const cleanerName = booking.cleaner_name || booking.driver_name || booking.chauffeur_name;
+  const cleanerPhone = booking.cleaner_phone || booking.driver_phone || booking.chauffeur_phone;
+  const history = {
+    confirmed: formatHistoryTime(booking.confirmed_at || booking.confirmedAt),
+    enroute: formatHistoryTime(booking.enroute_at || booking.en_route_at || booking.enrouteAt),
+    arrived: formatHistoryTime(booking.arrived_at || booking.arrivedAt),
+    completed: formatHistoryTime(booking.completed_at || booking.completedAt),
+  };
+
+  Object.keys(history).forEach((key) => {
+    if (!history[key]) delete history[key];
+  });
+
+  return {
+    id: booking.booking_number || booking.order_number || booking.reference || `CW-${booking.id}`,
+    originalId: booking.id,
+    customer: {
+      name: booking.passenger_name || booking.customer_name || booking.user_name || 'N/A',
+      phone: booking.contact_number || booking.customer_phone || booking.phone || 'N/A',
+    },
+    package: booking.package || booking.sub_Service || booking.sub_service || booking.service_package || 'N/A',
+    addOn: booking.add_ons || booking.addOns || booking.addon || '—',
+    vehicle: booking.car_name || booking.vehicle_name || booking.vehicle || 'N/A',
+    location: booking.from_address || booking.address || booking.location || 'N/A',
+    time: booking.date_time || formatDateTime(booking.date, booking.time),
+    bookedAt: booking.created_at || booking.createdAt || booking.date || 'N/A',
+    total: Number(booking.price || booking.total || booking.amount || 0),
+    status: normalizeStatus(booking.status),
+    cleaner: cleanerName || cleanerPhone ? {
+      name: cleanerName || 'Cleaner',
+      phone: cleanerPhone || 'N/A',
+    } : null,
+    history,
+    raw: booking,
+  };
+};
 
 // ─────────────────────────────────────────────────────────────
 // Status pill
@@ -258,9 +317,9 @@ function OrderDrawer({ order, onClose, onAdvance }) {
                   : <MapPin className="w-4 h-4" aria-hidden="true" />}
                 {action.full}
               </button>
-              {action.notify && (
+              {action.notification && (
                 <p className="text-[10px] text-gray-500 text-center">
-                  Sends an instant alert to the customer&apos;s app
+                  Sends customer notification: {action.notification}
                 </p>
               )}
             </>
@@ -291,27 +350,41 @@ export default function OrdersPage() {
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState(null);
   const [toast, setToast] = useState(null);
-  const loadedRef = useRef(false);
+  const [ordersLoading, setOrdersLoading] = useState(true);
+  const [ordersError, setOrdersError] = useState(null);
 
   const toggleSidebar = useCallback(() => setSidebarOpen((v) => !v), []);
 
-  // Load any previously saved state (kept hydration-safe: first render uses SAMPLE_ORDERS).
-  useEffect(() => {
+  const fetchCarWashOrders = useCallback(async () => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length) setOrders(parsed);
-      }
-    } catch { /* ignore corrupt storage */ }
-    loadedRef.current = true;
+      setOrdersLoading(true);
+      setOrdersError(null);
+
+      const response = await bookingService.getAllBookings({
+        status: 'all',
+        Service: 'car wash',
+        field: '',
+        search: '',
+        sorting: { field: 'id', order: 'desc' },
+        page: 1,
+        limit: 100,
+      });
+
+      const carWashOrders = extractArray(response).map(mapCarWashBooking);
+      setOrders(carWashOrders);
+    } catch (error) {
+      console.error('Error fetching car wash orders:', error);
+      setOrders(SAMPLE_ORDERS);
+      setOrdersError('Could not load car wash bookings from the API. Showing demo data.');
+      setToast({ message: 'Car wash API failed. Showing demo data.', type: 'warning' });
+    } finally {
+      setOrdersLoading(false);
+    }
   }, []);
 
-  // Persist after the initial load has run.
   useEffect(() => {
-    if (!loadedRef.current) return;
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(orders)); } catch { /* ignore */ }
-  }, [orders]);
+    fetchCarWashOrders();
+  }, [fetchCarWashOrders]);
 
   const counts = useMemo(() => {
     const c = { all: orders.length };
@@ -340,20 +413,43 @@ export default function OrdersPage() {
     [orders, selectedId]
   );
 
+  const resetOrdersView = useCallback(() => {
+    setActiveTab('all');
+    setQuery('');
+    setSelectedId(null);
+    fetchCarWashOrders();
+    setToast({ message: 'Order filters reset', type: 'info' });
+  }, [fetchCarWashOrders]);
+
   const advanceOrder = useCallback((order) => {
     const action = NEXT_ACTION[order.status];
     if (!action) return;
+    const sentAt = timeNow();
     setOrders((prev) =>
       prev.map((o) =>
         o.id === order.id
-          ? { ...o, status: action.next, history: { ...o.history, [action.next]: timeNow() } }
+          ? {
+              ...o,
+              status: action.next,
+              history: { ...o.history, [action.next]: sentAt },
+              notifications: action.notification
+                ? [
+                    ...(o.notifications || []),
+                    {
+                      status: action.next,
+                      message: action.notification,
+                      sentAt,
+                    },
+                  ]
+                : o.notifications,
+            }
           : o
       )
     );
     const label = STATUS_META[action.next].label;
     setToast({
-      message: action.notify
-        ? `Customer notified — ${label}`
+      message: action.notification
+        ? `Push notification sent: ${action.notification}`
         : `#${order.id} → ${label}`,
       type: 'success',
     });
@@ -399,10 +495,10 @@ export default function OrdersPage() {
                     />
                   </div>
                   <button
-                    onClick={() => { setOrders(SAMPLE_ORDERS); setToast({ message: 'Demo data reset', type: 'info' }); }}
+                    onClick={resetOrdersView}
                     className="flex items-center gap-1.5 px-3 py-2 border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors whitespace-nowrap"
-                    aria-label="Reset demo data"
-                    title="Restore the sample orders"
+                    aria-label="Reset order filters"
+                    title="Reset filters and restore the sample orders"
                   >
                     <RotateCcw className="w-3.5 h-3.5" aria-hidden="true" /> Reset
                   </button>
@@ -429,6 +525,16 @@ export default function OrdersPage() {
                   );
                 })}
               </div>
+
+              {(ordersLoading || ordersError) && (
+                <div className={`mx-5 mt-3 px-3 py-2 text-xs border ${
+                  ordersError
+                    ? 'bg-yellow-50 border-yellow-200 text-yellow-700'
+                    : 'bg-blue-50 border-blue-200 text-blue-700'
+                }`}>
+                  {ordersError || 'Loading car wash orders...'}
+                </div>
+              )}
 
               {/* Table */}
               <div className="p-4 sm:p-5">

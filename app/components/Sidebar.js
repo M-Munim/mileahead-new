@@ -3,7 +3,6 @@
 import {
   LayoutDashboard,
   Users,
-  Calendar,
   DollarSign,
   CreditCard,
   Car,
@@ -25,7 +24,6 @@ import img from "../../public/Group.png";
 const menuItems = [
   { icon: LayoutDashboard, label: 'Dashboard', href: '/dashboard' },
   { icon: Users, label: 'User Management', href: '/customers' },
-  { icon: Calendar, label: 'Booking / Ride Management', href: '/booking' },
   { icon: Droplets, label: 'Car Wash Orders', href: '/orders' },
   { icon: DollarSign, label: 'Pricing & Fees Management', href: '/pricing' },
   { icon: CreditCard, label: 'Financial Management', href: '#' },

@@ -230,7 +230,7 @@ export default function Dashboard() {
                             cardColor="bg-purple-100"
                             icon={Users}
                             value={metrics.activeDrivers.toString()}
-                            label="Active Drivers"
+                            label="Active Cleaners"
                             bgColor="bg-purple-600"
                             iconColor="text-white"
                             onClick={() => router.push('/dashboard/active-drivers')}

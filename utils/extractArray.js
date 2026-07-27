@@ -8,6 +8,12 @@ export function extractArray(response) {
     if (response.data.data && Array.isArray(response.data.data.results)) {
         return response.data.data.results;
     }
+    if (response.data.data && Array.isArray(response.data.data.bookings)) {
+        return response.data.data.bookings;
+    }
+    if (response.data.data && Array.isArray(response.data.data.orders)) {
+        return response.data.data.orders;
+    }
     if (Array.isArray(response.data.data)) return response.data.data;
     if (Array.isArray(response.data.users)) return response.data.users;
     if (Array.isArray(response.data.drivers)) return response.data.drivers;
