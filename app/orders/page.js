@@ -40,6 +40,15 @@ const NEXT_ACTION = {
   arrived:   { next: 'completed', row: 'Mark Completed', full: 'Mark as Completed', tone: 'green',   notification: 'Job completed' },
 };
 
+const STATUS_API_VALUE = {
+  confirmed: 'confirmed',
+  enroute: 'En Route',
+  arrived: 'arrived',
+  completed: 'completed',
+};
+
+const UPDATE_STATUS_API = new Set(['enroute', 'arrived', 'completed']);
+
 const TABS = [
   { key: 'all',       label: 'All' },
   { key: 'pending',   label: 'Pending' },
@@ -421,17 +430,39 @@ export default function OrdersPage() {
     setToast({ message: 'Order filters reset', type: 'info' });
   }, [fetchCarWashOrders]);
 
-  const advanceOrder = useCallback((order) => {
+  const advanceOrder = useCallback(async (order) => {
     const action = NEXT_ACTION[order.status];
     if (!action) return;
     const sentAt = timeNow();
+    const previousOrder = order;
+    const bookingId = order.originalId || order.raw?.id || order.id;
+    let updatedOrder = null;
+
+    try {
+      const response = UPDATE_STATUS_API.has(action.next)
+        ? await bookingService.updateStatus({
+            bookingId,
+            driverId: String(order.raw?.driver_id || order.raw?.driverId || order.cleaner?.id || 1),
+            newStatus: STATUS_API_VALUE[action.next] || action.next,
+          })
+        : await bookingService.updateBooking(bookingId, {
+            status: STATUS_API_VALUE[action.next] || action.next,
+          });
+      const backendOrder = response.data?.booking || response.data?.data || response.data?.result;
+      updatedOrder = backendOrder ? mapCarWashBooking(backendOrder) : null;
+    } catch (error) {
+      console.error('Error updating car wash order status:', error);
+      setToast({ message: `Failed to update #${order.id}. Please try again.`, type: 'error' });
+      return;
+    }
+
     setOrders((prev) =>
       prev.map((o) =>
         o.id === order.id
           ? {
-              ...o,
+              ...(updatedOrder || o),
               status: action.next,
-              history: { ...o.history, [action.next]: sentAt },
+              history: { ...(updatedOrder?.history || o.history), [action.next]: sentAt },
               notifications: action.notification
                 ? [
                     ...(o.notifications || []),
@@ -450,7 +481,7 @@ export default function OrdersPage() {
     setToast({
       message: action.notification
         ? `Push notification sent: ${action.notification}`
-        : `#${order.id} → ${label}`,
+        : `#${previousOrder.id} → ${label}`,
       type: 'success',
     });
   }, []);
