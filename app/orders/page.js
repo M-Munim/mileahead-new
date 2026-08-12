@@ -63,29 +63,29 @@ const TABS = [
 // ─────────────────────────────────────────────────────────────
 const SAMPLE_ORDERS = [
   // Pending (3)
-  { id: 'CW-1042', customer: { name: 'Jane Doe', phone: '+974 5511 2233' }, package: 'Classic Care', addOn: '—', vehicle: 'Sedan', location: 'Al Waab St', time: 'Today, 4:00 PM', bookedAt: 'Today · 12:40 PM', total: 55, status: 'pending', cleaner: null, history: {} },
-  { id: 'CW-1045', customer: { name: 'Omar F.', phone: '+974 6633 1188' }, package: 'Premium Detail', addOn: '—', vehicle: 'SUV', location: 'Lusail Marina', time: 'Today, 5:30 PM', bookedAt: 'Today · 1:05 PM', total: 90, status: 'pending', cleaner: null, history: {} },
-  { id: 'CW-1046', customer: { name: 'Aisha M.', phone: '+974 5599 2277' }, package: 'Quick Shine', addOn: '—', vehicle: 'Hatchback', location: 'Al Sadd', time: 'Today, 6:00 PM', bookedAt: 'Today · 1:20 PM', total: 40, status: 'pending', cleaner: null, history: {} },
+  { id: 'CW-1042', customer: { name: 'Jane Doe', phone: '+974 5511 2233' }, package: 'Classic Care', addOn: '—', vehicle: 'Sedan', numberPlate: 'QAR 1234', location: 'Al Waab St', time: 'Today, 4:00 PM', bookedAt: 'Today · 12:40 PM', total: 55, status: 'pending', cleaner: null, history: {} },
+  { id: 'CW-1045', customer: { name: 'Omar F.', phone: '+974 6633 1188' }, package: 'Premium Detail', addOn: '—', vehicle: 'SUV', numberPlate: 'QAR 5678', location: 'Lusail Marina', time: 'Today, 5:30 PM', bookedAt: 'Today · 1:05 PM', total: 90, status: 'pending', cleaner: null, history: {} },
+  { id: 'CW-1046', customer: { name: 'Aisha M.', phone: '+974 5599 2277' }, package: 'Quick Shine', addOn: '—', vehicle: 'Hatchback', numberPlate: 'QAR 9012', location: 'Al Sadd', time: 'Today, 6:00 PM', bookedAt: 'Today · 1:20 PM', total: 40, status: 'pending', cleaner: null, history: {} },
 
   // Confirmed (4)
-  { id: 'CW-1041', customer: { name: 'Mohammed A.', phone: '+974 3344 5566' }, package: 'Premium Detail', addOn: '—', vehicle: 'SUV', location: 'Villa 22, West Bay', time: 'Today, 3:30 PM', bookedAt: 'Today · 11:50 AM', total: 90, status: 'confirmed', cleaner: { name: 'Rajesh (Cleaner)', phone: '+974 3311 9900' }, history: { confirmed: '2:10 PM' } },
-  { id: 'CW-1040', customer: { name: 'Noor S.', phone: '+974 5544 8822' }, package: 'Classic Care', addOn: '—', vehicle: 'Sedan', location: 'Al Gharrafa', time: 'Today, 3:00 PM', bookedAt: 'Today · 11:30 AM', total: 55, status: 'confirmed', cleaner: { name: 'Mahesh (Cleaner)', phone: '+974 3300 1122' }, history: { confirmed: '1:50 PM' } },
-  { id: 'CW-1038', customer: { name: 'Khalid B.', phone: '+974 6677 3344' }, package: 'Quick Shine + Hygiene', addOn: 'Hygiene Plus', vehicle: '4x4', location: 'The Pearl', time: 'Today, 2:45 PM', bookedAt: 'Today · 11:10 AM', total: 70, status: 'confirmed', cleaner: { name: 'Suresh (Cleaner)', phone: '+974 3322 7788' }, history: { confirmed: '1:30 PM' } },
-  { id: 'CW-1036', customer: { name: 'Hind A.', phone: '+974 5522 6611' }, package: 'Classic Care', addOn: '—', vehicle: 'Van', location: 'Al Wakrah', time: 'Today, 2:30 PM', bookedAt: 'Today · 10:55 AM', total: 65, status: 'confirmed', cleaner: { name: 'Rajesh (Cleaner)', phone: '+974 3311 9900' }, history: { confirmed: '1:15 PM' } },
+  { id: 'CW-1041', customer: { name: 'Mohammed A.', phone: '+974 3344 5566' }, package: 'Premium Detail', addOn: '—', vehicle: 'SUV', numberPlate: 'QAR 3456', location: 'Villa 22, West Bay', time: 'Today, 3:30 PM', bookedAt: 'Today · 11:50 AM', total: 90, status: 'confirmed', cleaner: { name: 'Rajesh (Cleaner)', phone: '+974 3311 9900' }, history: { confirmed: '2:10 PM' } },
+  { id: 'CW-1040', customer: { name: 'Noor S.', phone: '+974 5544 8822' }, package: 'Classic Care', addOn: '—', vehicle: 'Sedan', numberPlate: 'QAR 7890', location: 'Al Gharrafa', time: 'Today, 3:00 PM', bookedAt: 'Today · 11:30 AM', total: 55, status: 'confirmed', cleaner: { name: 'Mahesh (Cleaner)', phone: '+974 3300 1122' }, history: { confirmed: '1:50 PM' } },
+  { id: 'CW-1038', customer: { name: 'Khalid B.', phone: '+974 6677 3344' }, package: 'Quick Shine + Hygiene', addOn: 'Hygiene Plus', vehicle: '4x4', numberPlate: 'QAR 2345', location: 'The Pearl', time: 'Today, 2:45 PM', bookedAt: 'Today · 11:10 AM', total: 70, status: 'confirmed', cleaner: { name: 'Suresh (Cleaner)', phone: '+974 3322 7788' }, history: { confirmed: '1:30 PM' } },
+  { id: 'CW-1036', customer: { name: 'Hind A.', phone: '+974 5522 6611' }, package: 'Classic Care', addOn: '—', vehicle: 'Van', numberPlate: 'QAR 6789', location: 'Al Wakrah', time: 'Today, 2:30 PM', bookedAt: 'Today · 10:55 AM', total: 65, status: 'confirmed', cleaner: { name: 'Rajesh (Cleaner)', phone: '+974 3311 9900' }, history: { confirmed: '1:15 PM' } },
 
   // En Route (2)
-  { id: 'CW-1039', customer: { name: 'Sara K.', phone: '+974 7788 9900' }, package: 'Quick Shine', addOn: 'Hygiene Plus', vehicle: '4x4 / Pickup', location: 'The Pearl, Zone 66', time: 'Today, 2:15 PM', bookedAt: 'Today · 12:40 PM', total: 70, status: 'enroute', cleaner: { name: 'Mahesh (Cleaner)', phone: '+974 3300 1122' }, history: { confirmed: '12:45 PM', enroute: '1:55 PM' } },
-  { id: 'CW-1035', customer: { name: 'Fahad Q.', phone: '+974 6611 2200' }, package: 'Premium Detail', addOn: '—', vehicle: 'SUV', location: 'West Bay', time: 'Today, 1:45 PM', bookedAt: 'Today · 11:00 AM', total: 90, status: 'enroute', cleaner: { name: 'Suresh (Cleaner)', phone: '+974 3322 7788' }, history: { confirmed: '12:30 PM', enroute: '1:20 PM' } },
+  { id: 'CW-1039', customer: { name: 'Sara K.', phone: '+974 7788 9900' }, package: 'Quick Shine', addOn: 'Hygiene Plus', vehicle: '4x4 / Pickup', numberPlate: 'QAR 4567', location: 'The Pearl, Zone 66', time: 'Today, 2:15 PM', bookedAt: 'Today · 12:40 PM', total: 70, status: 'enroute', cleaner: { name: 'Mahesh (Cleaner)', phone: '+974 3300 1122' }, history: { confirmed: '12:45 PM', enroute: '1:55 PM' } },
+  { id: 'CW-1035', customer: { name: 'Fahad Q.', phone: '+974 6611 2200' }, package: 'Premium Detail', addOn: '—', vehicle: 'SUV', numberPlate: 'QAR 8901', location: 'West Bay', time: 'Today, 1:45 PM', bookedAt: 'Today · 11:00 AM', total: 90, status: 'enroute', cleaner: { name: 'Suresh (Cleaner)', phone: '+974 3322 7788' }, history: { confirmed: '12:30 PM', enroute: '1:20 PM' } },
 
   // Arrived (1)
-  { id: 'CW-1037', customer: { name: 'Yusuf R.', phone: '+974 6611 4477' }, package: 'Classic Care', addOn: '—', vehicle: 'Van', location: 'Al Sadd', time: 'Today, 1:00 PM', bookedAt: 'Today · 10:30 AM', total: 65, status: 'arrived', cleaner: { name: 'Suresh (Cleaner)', phone: '+974 3322 7788' }, history: { confirmed: '11:45 AM', enroute: '12:30 PM', arrived: '12:55 PM' } },
+  { id: 'CW-1037', customer: { name: 'Yusuf R.', phone: '+974 6611 4477' }, package: 'Classic Care', addOn: '—', vehicle: 'Van', numberPlate: 'QAR 0123', location: 'Al Sadd', time: 'Today, 1:00 PM', bookedAt: 'Today · 10:30 AM', total: 65, status: 'arrived', cleaner: { name: 'Suresh (Cleaner)', phone: '+974 3322 7788' }, history: { confirmed: '11:45 AM', enroute: '12:30 PM', arrived: '12:55 PM' } },
 
   // Completed (5)
-  { id: 'CW-0981', customer: { name: 'Layla H.', phone: '+974 5522 3311' }, package: 'Quick Shine', addOn: '—', vehicle: 'SUV', location: 'Villa 22, West Bay', time: 'Sat, 12 Jul', bookedAt: 'Sat, 12 Jul · 9:10 AM', total: 60, status: 'completed', cleaner: { name: 'Mahesh (Cleaner)', phone: '+974 3300 1122' }, history: { confirmed: '9:20 AM', enroute: '9:55 AM', arrived: '10:15 AM', completed: '10:50 AM' } },
-  { id: 'CW-0980', customer: { name: 'Ahmed T.', phone: '+974 3300 7766' }, package: 'Premium Detail', addOn: '—', vehicle: 'Sedan', location: 'Al Waab St', time: 'Sat, 12 Jul', bookedAt: 'Sat, 12 Jul · 8:40 AM', total: 85, status: 'completed', cleaner: { name: 'Rajesh (Cleaner)', phone: '+974 3311 9900' }, history: { confirmed: '8:50 AM', enroute: '9:20 AM', arrived: '9:40 AM', completed: '10:25 AM' } },
-  { id: 'CW-0979', customer: { name: 'Mariam D.', phone: '+974 5511 8899' }, package: 'Classic Care', addOn: '—', vehicle: '4x4', location: 'Lusail', time: 'Fri, 11 Jul', bookedAt: 'Fri, 11 Jul · 3:15 PM', total: 60, status: 'completed', cleaner: { name: 'Suresh (Cleaner)', phone: '+974 3322 7788' }, history: { confirmed: '3:25 PM', enroute: '3:55 PM', arrived: '4:10 PM', completed: '4:45 PM' } },
-  { id: 'CW-0978', customer: { name: 'Ali H.', phone: '+974 6600 5511' }, package: 'Quick Shine + Hygiene', addOn: 'Hygiene Plus', vehicle: 'SUV', location: 'The Pearl', time: 'Fri, 11 Jul', bookedAt: 'Fri, 11 Jul · 1:00 PM', total: 70, status: 'completed', cleaner: { name: 'Mahesh (Cleaner)', phone: '+974 3300 1122' }, history: { confirmed: '1:10 PM', enroute: '1:40 PM', arrived: '2:00 PM', completed: '2:40 PM' } },
-  { id: 'CW-0977', customer: { name: 'Reem N.', phone: '+974 5533 2244' }, package: 'Classic Care', addOn: '—', vehicle: 'Sedan', location: 'Al Sadd', time: 'Thu, 10 Jul', bookedAt: 'Thu, 10 Jul · 11:20 AM', total: 55, status: 'completed', cleaner: { name: 'Rajesh (Cleaner)', phone: '+974 3311 9900' }, history: { confirmed: '11:30 AM', enroute: '12:00 PM', arrived: '12:20 PM', completed: '12:55 PM' } },
+  { id: 'CW-0981', customer: { name: 'Layla H.', phone: '+974 5522 3311' }, package: 'Quick Shine', addOn: '—', vehicle: 'SUV', numberPlate: 'QAR 1357', location: 'Villa 22, West Bay', time: 'Sat, 12 Jul', bookedAt: 'Sat, 12 Jul · 9:10 AM', total: 60, status: 'completed', cleaner: { name: 'Mahesh (Cleaner)', phone: '+974 3300 1122' }, history: { confirmed: '9:20 AM', enroute: '9:55 AM', arrived: '10:15 AM', completed: '10:50 AM' } },
+  { id: 'CW-0980', customer: { name: 'Ahmed T.', phone: '+974 3300 7766' }, package: 'Premium Detail', addOn: '—', vehicle: 'Sedan', numberPlate: 'QAR 2468', location: 'Al Waab St', time: 'Sat, 12 Jul', bookedAt: 'Sat, 12 Jul · 8:40 AM', total: 85, status: 'completed', cleaner: { name: 'Rajesh (Cleaner)', phone: '+974 3311 9900' }, history: { confirmed: '8:50 AM', enroute: '9:20 AM', arrived: '9:40 AM', completed: '10:25 AM' } },
+  { id: 'CW-0979', customer: { name: 'Mariam D.', phone: '+974 5511 8899' }, package: 'Classic Care', addOn: '—', vehicle: '4x4', numberPlate: 'QAR 3691', location: 'Lusail', time: 'Fri, 11 Jul', bookedAt: 'Fri, 11 Jul · 3:15 PM', total: 60, status: 'completed', cleaner: { name: 'Suresh (Cleaner)', phone: '+974 3322 7788' }, history: { confirmed: '3:25 PM', enroute: '3:55 PM', arrived: '4:10 PM', completed: '4:45 PM' } },
+  { id: 'CW-0978', customer: { name: 'Ali H.', phone: '+974 6600 5511' }, package: 'Quick Shine + Hygiene', addOn: 'Hygiene Plus', vehicle: 'SUV', numberPlate: 'QAR 4820', location: 'The Pearl', time: 'Fri, 11 Jul', bookedAt: 'Fri, 11 Jul · 1:00 PM', total: 70, status: 'completed', cleaner: { name: 'Mahesh (Cleaner)', phone: '+974 3300 1122' }, history: { confirmed: '1:10 PM', enroute: '1:40 PM', arrived: '2:00 PM', completed: '2:40 PM' } },
+  { id: 'CW-0977', customer: { name: 'Reem N.', phone: '+974 5533 2244' }, package: 'Classic Care', addOn: '—', vehicle: 'Sedan', numberPlate: 'QAR 5931', location: 'Al Sadd', time: 'Thu, 10 Jul', bookedAt: 'Thu, 10 Jul · 11:20 AM', total: 55, status: 'completed', cleaner: { name: 'Rajesh (Cleaner)', phone: '+974 3311 9900' }, history: { confirmed: '11:30 AM', enroute: '12:00 PM', arrived: '12:20 PM', completed: '12:55 PM' } },
 ];
 
 const getInitial = (name) => (name?.trim()?.[0] || '?').toUpperCase();
@@ -138,6 +138,7 @@ const mapCarWashBooking = (booking) => {
     package: booking.package || booking.sub_Service || booking.sub_service || booking.service_package || 'N/A',
     addOn: booking.add_ons || booking.addOns || booking.addon || '—',
     vehicle: booking.car_name || booking.vehicle_name || booking.vehicle || 'N/A',
+    numberPlate: booking.car_number || booking.car_number_plate || booking.number_plate || booking.license_plate || booking.plate || '',
     location: booking.from_address || booking.address || booking.location || 'N/A',
     time: booking.date_time || formatDateTime(booking.date, booking.time),
     bookedAt: booking.created_at || booking.createdAt || booking.date || 'N/A',
@@ -194,6 +195,7 @@ function OrderDrawer({ order, onClose, onAdvance }) {
     ['Package', order.package],
     ['Add-on', order.addOn || '—'],
     ['Vehicle', order.vehicle],
+    ['Number Plate', order.numberPlate || '—'],
     ['Location', order.location],
     ['Slot', order.time],
     ['Total', `QAR ${order.total}`],
@@ -364,14 +366,14 @@ export default function OrdersPage() {
 
   const toggleSidebar = useCallback(() => setSidebarOpen((v) => !v), []);
 
-  const fetchCarWashOrders = useCallback(async () => {
+const fetchCarWashOrders = useCallback(async () => {
     try {
       setOrdersLoading(true);
       setOrdersError(null);
 
       const response = await bookingService.getAllBookings({
         status: 'all',
-        Service: 'car wash',
+        service: 'car wash',
         field: '',
         search: '',
         sorting: { field: 'id', order: 'desc' },
@@ -412,7 +414,8 @@ export default function OrdersPage() {
         o.customer.name.toLowerCase().includes(q) ||
         o.customer.phone.toLowerCase().includes(q) ||
         o.location.toLowerCase().includes(q) ||
-        o.package.toLowerCase().includes(q)
+        o.package.toLowerCase().includes(q) ||
+        (o.numberPlate || '').toLowerCase().includes(q)
       );
     });
   }, [orders, activeTab, query]);
@@ -570,10 +573,10 @@ export default function OrdersPage() {
               {/* Table */}
               <div className="p-4 sm:p-5">
                 <div className="overflow-x-auto border border-gray-200 rounded-lg">
-                  <table className="w-full border-collapse min-w-[760px]">
+                  <table className="w-full border-collapse min-w-[860px]">
                     <thead>
                       <tr>
-                        {['Order', 'Customer', 'Service', 'Location', 'Time', 'Status', ''].map((h, i) => (
+                        {['Order', 'Customer', 'Service', 'Number Plate', 'Location', 'Time', 'Status', ''].map((h, i) => (
                           <th
                             key={i}
                             className="text-left text-[10px] uppercase tracking-wide text-gray-500 font-semibold bg-gray-50 px-3.5 py-2.5 border-b border-gray-200"
@@ -600,6 +603,7 @@ export default function OrdersPage() {
                             <td className="px-3.5 py-3 text-sm text-gray-700 whitespace-nowrap">
                               {o.package} <span className="text-gray-400">· {o.vehicle}</span>
                             </td>
+                            <td className="px-3.5 py-3 text-sm text-gray-700 whitespace-nowrap font-medium">{o.numberPlate || '—'}</td>
                             <td className="px-3.5 py-3 text-sm text-gray-700 whitespace-nowrap">{o.location}</td>
                             <td className="px-3.5 py-3 text-sm text-gray-700 whitespace-nowrap">{o.time}</td>
                             <td className="px-3.5 py-3"><StatusPill status={o.status} /></td>
