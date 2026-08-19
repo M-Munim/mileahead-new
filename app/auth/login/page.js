@@ -4,9 +4,9 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Toast from '../../components/Toast';
 import { driverService } from '../../../utils/axiosInstance';
-import { useAuth, ROLES, ROLE_NAMES } from '../../contexts/AuthContext';
+import { useAuth, ROLES, ROLE_NAMES, isDashboardRole } from '../../contexts/AuthContext';
 import Link from "next/link";
-import { Shield, Car } from 'lucide-react';
+import { Shield, UserCog } from 'lucide-react';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -14,28 +14,28 @@ export default function LoginPage() {
   const [formData, setFormData] = useState({
     identifier: '',
     password: '',
-    role: ROLES.CHAUFFEUR
+    role: ROLES.ADMIN
   });
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState(null);
   const [errors, setErrors] = useState({});
 
   const roleConfig = {
-    [ROLES.CHAUFFEUR]: {
-      icon: Car,
+    [ROLES.ADMIN]: {
+      icon: Shield,
       color: 'from-purple-500 to-purple-600',
       bgColor: 'bg-purple-50',
       borderColor: 'border-purple-500',
       textColor: 'text-purple-700',
-      description: 'Chauffeur account'
+      description: 'Admin account'
     },
-    [ROLES.PDDRIVER]: {
-      icon: Shield,
+    [ROLES.MANAGER]: {
+      icon: UserCog,
       color: 'from-blue-500 to-blue-600',
       bgColor: 'bg-blue-50',
       borderColor: 'border-blue-500',
       textColor: 'text-blue-700',
-      description: 'PD Driver account'
+      description: 'Manager account'
     }
   };
 
@@ -76,18 +76,31 @@ export default function LoginPage() {
 
       const response = await driverService.login(loginData);
 
+      // The account's real role comes from the server — the card the user
+      // picked is only a hint. Fall back to it if the API omits the role.
+      const accountRole = response.data.user?.role || formData.role;
+
+      // Driver accounts (chauffeurs / pddriver) have no access to this panel.
+      if (!isDashboardRole(accountRole)) {
+        setToast({
+          message: 'This account does not have dashboard access. Please sign in with an Admin or Manager account.',
+          type: 'error'
+        });
+        return;
+      }
+
       if (response.data.token) {
         const userData = {
           username: response.data.user?.username || formData.identifier,
           email: response.data.user?.email || response.data.email || formData.identifier,
-          role: formData.role
+          role: accountRole
         };
 
-        login(response.data.token, userData, formData.role);
+        login(response.data.token, userData, accountRole);
       }
 
       setToast({
-        message: `Login successful as ${ROLE_NAMES[formData.role]}!`,
+        message: `Login successful as ${ROLE_NAMES[accountRole]}!`,
         type: 'success'
       });
 

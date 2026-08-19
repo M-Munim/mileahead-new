@@ -8,21 +8,21 @@ const AuthContext = createContext();
 // These are the SINGLE SOURCE OF TRUTH for roles across login AND signup.
 // The values MUST match what the backend accepts (see GET /api/v1/role-details).
 export const ROLES = {
-  CHAUFFEUR: 'chauffeurs',
-  PDDRIVER: 'pddriver',
+  ADMIN: 'admin',
+  MANAGER: 'manager',
 };
 
 // Role display names
 export const ROLE_NAMES = {
-  [ROLES.CHAUFFEUR]: 'Chauffeur',
-  [ROLES.PDDRIVER]: 'PD Driver',
+  [ROLES.ADMIN]: 'Admin',
+  [ROLES.MANAGER]: 'Manager',
 };
 
 // Role permissions.
-// Both driver roles currently get full access to the admin panel. Flip any of
-// these to `false` later if you want to restrict what a given role can see.
+// Both roles currently get full access to the admin panel. Flip any of
+// these to `false` later if you want to restrict what a Manager can see.
 export const ROLE_PERMISSIONS = {
-  [ROLES.CHAUFFEUR]: {
+  [ROLES.ADMIN]: {
     canAccessDashboard: true,
     canManageUsers: true,
     canManageBookings: true,
@@ -32,7 +32,7 @@ export const ROLE_PERMISSIONS = {
     canAccessReports: true,
     canManageSettings: true,
   },
-  [ROLES.PDDRIVER]: {
+  [ROLES.MANAGER]: {
     canAccessDashboard: true,
     canManageUsers: true,
     canManageBookings: true,
@@ -43,6 +43,14 @@ export const ROLE_PERMISSIONS = {
     canManageSettings: true,
   },
 };
+
+/**
+ * Roles allowed into this dashboard. Driver accounts (chauffeurs / pddriver)
+ * still exist in the backend but have no business in the admin panel.
+ */
+export function isDashboardRole(value) {
+  return Object.values(ROLES).includes(value);
+}
 
 /**
  * Check if a JWT token is expired by decoding the payload.
@@ -98,7 +106,11 @@ export function AuthProvider({ children }) {
     if (token && !isTokenExpired(token)) {
       setIsLoggedIn(true);
       if (userData) setUser(userData);
-      if (userRole) setRole(userRole);
+      // Ignore roles saved before the Chauffeur/PD Driver -> Admin/Manager
+      // rename; fall back to Admin so old sessions aren't locked out.
+      const validRole = isDashboardRole(userRole) ? userRole : ROLES.ADMIN;
+      setRole(validRole);
+      localStorage.setItem('userRole', validRole);
     } else if (token) {
       // Token exists but is expired — clear it
       localStorage.removeItem('token');
@@ -108,7 +120,7 @@ export function AuthProvider({ children }) {
     setLoading(false);
   }, []);
 
-  const login = useCallback((token, userData = null, userRole = ROLES.CHAUFFEUR) => {
+  const login = useCallback((token, userData = null, userRole = ROLES.ADMIN) => {
     localStorage.setItem('token', token);
     if (userData) {
       localStorage.setItem('user', JSON.stringify(userData));

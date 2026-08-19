@@ -23,7 +23,7 @@ export default function PricingPage() {
   };
 
   return (
-    <RoleGuard allowedRoles={[ROLES.CHAUFFEUR, ROLES.PDDRIVER]}>
+    <RoleGuard allowedRoles={[ROLES.ADMIN, ROLES.MANAGER]}>
       <div className="flex min-h-screen bg-gray-50 overflow-x-hidden">
         <Sidebar isOpen={sidebarOpen} toggleSidebar={toggleSidebar} />
 

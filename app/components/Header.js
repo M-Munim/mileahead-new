@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import { Bell, Settings, Menu, LogOut, Shield, Car } from 'lucide-react';
+import { Bell, Settings, Menu, LogOut, Shield, UserCog } from 'lucide-react';
 import { useAuth, ROLES } from '../contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 
@@ -10,18 +10,18 @@ export default function Header({ title, toggleSidebar }) {
   const router = useRouter();
 
   const roleIcons = {
-    [ROLES.CHAUFFEUR]: Car,
-    [ROLES.PDDRIVER]: Shield,
+    [ROLES.ADMIN]: Shield,
+    [ROLES.MANAGER]: UserCog,
   };
 
   const roleColors = {
-    [ROLES.CHAUFFEUR]: 'bg-purple-500',
-    [ROLES.PDDRIVER]: 'bg-blue-500',
+    [ROLES.ADMIN]: 'bg-purple-500',
+    [ROLES.MANAGER]: 'bg-blue-500',
   };
 
   const roleBadgeColors = {
-    [ROLES.CHAUFFEUR]: 'bg-purple-100 text-purple-700',
-    [ROLES.PDDRIVER]: 'bg-blue-100 text-blue-700',
+    [ROLES.ADMIN]: 'bg-purple-100 text-purple-700',
+    [ROLES.MANAGER]: 'bg-blue-100 text-blue-700',
   };
 
   const RoleIcon = role ? roleIcons[role] : Shield;

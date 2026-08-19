@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth, ROLE_NAMES } from '../contexts/AuthContext';
-import { Shield, AlertCircle } from 'lucide-react';
+import { useAuth, ROLES, ROLE_NAMES } from '../contexts/AuthContext';
+import { Shield, UserCog, AlertCircle } from 'lucide-react';
 import Skeleton from './Skeleton';
 
 /**
@@ -11,7 +11,7 @@ import Skeleton from './Skeleton';
  * Protects routes/components based on user roles
  * 
  * Usage:
- * <RoleGuard allowedRoles={['chauffeurs', 'pddriver']}>
+ * <RoleGuard allowedRoles={['admin', 'manager']}>
  *   <YourProtectedComponent />
  * </RoleGuard>
  */
@@ -136,19 +136,19 @@ export function PermissionGuard({ children, permission, fallback = null }) {
  * Displays a role badge
  * 
  * Usage:
- * <RoleBadge role="chauffeurs" />
+ * <RoleBadge role="admin" />
  */
 export function RoleBadge({ roleKey }) {
   const roleConfig = {
-    chauffeurs: {
+    [ROLES.ADMIN]: {
       icon: Shield,
       color: 'bg-purple-500',
-      name: 'Chauffeur'
+      name: ROLE_NAMES[ROLES.ADMIN]
     },
-    pddriver: {
-      icon: Shield,
+    [ROLES.MANAGER]: {
+      icon: UserCog,
       color: 'bg-blue-500',
-      name: 'PD Driver'
+      name: ROLE_NAMES[ROLES.MANAGER]
     }
   };
 
