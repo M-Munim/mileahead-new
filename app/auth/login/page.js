@@ -76,9 +76,10 @@ export default function LoginPage() {
 
       const response = await driverService.login(loginData);
 
-      // The account's real role comes from the server — the card the user
-      // picked is only a hint. Fall back to it if the API omits the role.
-      const accountRole = response.data.user?.role || formData.role;
+      // The account's real role comes from the server. The card the user picked
+      // is presentational only and must never grant privilege: if the API omits
+      // the role we fall back to Manager (least privilege), never to Admin.
+      const accountRole = response.data.user?.role || ROLES.MANAGER;
 
       // Driver accounts (chauffeurs / pddriver) have no access to this panel.
       if (!isDashboardRole(accountRole)) {

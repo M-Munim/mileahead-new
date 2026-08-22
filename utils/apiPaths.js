@@ -57,6 +57,33 @@ export const API_PATHS = {
         GET_ALL_USERS: "/api/v1/auth/all-users",
     },
 
+    // Car wash pricing. NOTE: the Postman collection lists these as
+    // /package/all etc, but the real paths carry the /api/v1 prefix like
+    // everything else — verified against the live API.
+    PACKAGES: {
+        GET_ALL: "/api/v1/package/all",
+        GET_ONE: (id) => `/api/v1/package/one/${id}`,
+        ADD: "/api/v1/package/add",
+        UPDATE: (id) => `/api/v1/package/update/${id}`,
+        DELETE: (id) => `/api/v1/package/delete/${id}`,
+    },
+
+    VEHICLES: {
+        GET_ALL: "/api/v1/vehicle/all",
+        GET_ONE: (id) => `/api/v1/vehicle/one/${id}`,
+        ADD: "/api/v1/vehicle/add",
+        UPDATE: (id) => `/api/v1/vehicle/update/${id}`,
+        DELETE: (id) => `/api/v1/vehicle/delete/${id}`,
+    },
+
+    ADDONS: {
+        GET_ALL: "/api/v1/addon/all",
+        GET_ONE: (id) => `/api/v1/addon/one/${id}`,
+        ADD: "/api/v1/addon/add",
+        UPDATE: (id) => `/api/v1/addon/update/${id}`,
+        DELETE: (id) => `/api/v1/addon/delete/${id}`,
+    },
+
     BOOKING: {
         UPDATE_BOOKING: (bookingId) => `/api/v1/booking/update-booking/${bookingId}`,
         CREATE_BOOKING: "/api/v1/booking/booking",

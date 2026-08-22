@@ -161,6 +161,54 @@ export const userService = {
         api.post(API_PATHS.USER_MANAGEMENT.GET_ALL_USERS, body),
 };
 
+// ---------- CAR WASH PRICING ----------
+// Packages and add-ons take JSON. Vehicles take multipart/form-data because the
+// endpoint also accepts an image; we omit the file so the existing image stays.
+
+export const packageService = {
+    getAll: () => api.get(API_PATHS.PACKAGES.GET_ALL),
+
+    getOne: (id) => api.get(API_PATHS.PACKAGES.GET_ONE(id)),
+
+    add: (body) => api.post(API_PATHS.PACKAGES.ADD, body),
+
+    update: (id, body) => api.put(API_PATHS.PACKAGES.UPDATE(id), body),
+
+    remove: (id) => api.put(API_PATHS.PACKAGES.DELETE(id)),
+};
+
+export const addonService = {
+    getAll: () => api.get(API_PATHS.ADDONS.GET_ALL),
+
+    getOne: (id) => api.get(API_PATHS.ADDONS.GET_ONE(id)),
+
+    add: (body) => api.post(API_PATHS.ADDONS.ADD, body),
+
+    update: (id, body) => api.put(API_PATHS.ADDONS.UPDATE(id), body),
+
+    remove: (id) => api.put(API_PATHS.ADDONS.DELETE(id)),
+};
+
+export const vehicleService = {
+    getAll: () => api.get(API_PATHS.VEHICLES.GET_ALL),
+
+    getOne: (id) => api.get(API_PATHS.VEHICLES.GET_ONE(id)),
+
+    // `body` is a FormData instance. Content-Type is cleared so the browser
+    // sets multipart/form-data with the correct boundary.
+    add: (body) =>
+        api.post(API_PATHS.VEHICLES.ADD, body, {
+            headers: { 'Content-Type': undefined },
+        }),
+
+    update: (id, body) =>
+        api.put(API_PATHS.VEHICLES.UPDATE(id), body, {
+            headers: { 'Content-Type': undefined },
+        }),
+
+    remove: (id) => api.put(API_PATHS.VEHICLES.DELETE(id)),
+};
+
 // ---------- BOOKING ----------
 export const bookingService = {
     updateBooking: (id, body) =>
