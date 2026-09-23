@@ -165,7 +165,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "\r\n{\r\n    \"email\": \"mushiiqmh@gmail.com\"\r\n}",
+              "raw": "\r\n{\r\n    \"email\": \"mushqmh@gmail.com\"\r\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -199,7 +199,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\r\n    \"email\": \"mushiiqmh@gmail.com\",\r\n    \"otp\": \"096142\",\r\n    \"firstname\": \"Musharaf\",\r\n    \"lastname\": \"kashmiri\",\r\n    \"phone\": \"0345226987\"\r\n}",
+              "raw": "{\r\n    \"email\": \"mushiqmh@gmail.com\",\r\n    \"otp\": \"065360\",\r\n    \"firstname\": \"Musharaf\",\r\n    \"fcm_token\": \"evQ_E7zTaE6ogemqM:APA91bHJa-sh9Huqe2khZ-bF8upbUak9cbbVU9U7IJcPi2No6v2QkpiMoyIluYTB75VzIt2s2yiECtas-NPBMRp_KwAkdXbNCjDrr8K-7JMaiBv0NybZ5Wg\",\r\n    \"lastname\": \"kashmiri\",\r\n    \"phone\": \"0345226987\"\r\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -301,7 +301,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\r\n    \"email\": \"mushiiqmh@gmail.com\",\r\n    \"otp\": \"856168\"\r\n}",
+              "raw": "{\r\n    \"email\": \"mushiiqmh@gmail.com\",\r\n    \"otp\": \"856168\",\r\n     \"fcm_token\": \"ghdfgsdgfjhsgdfhgsdfgsdfghfgdshf\"\r\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -660,6 +660,12 @@
                   "type": "file",
                   "uuid": "1122d49a-1fc8-4f97-b467-9f34723d95fe",
                   "src": "/C:/Users/musha/Downloads/IMG-20251128-WA0019.jpg"
+                },
+                {
+                  "key": "user_id",
+                  "value": "1",
+                  "type": "text",
+                  "uuid": "029250be-d507-4481-867b-1ae1551c0cf0"
                 }
               ]
             },
@@ -738,6 +744,39 @@
                 "user",
                 "car-one-details",
                 "2"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "by-user-id",
+          "protocolProfileBehavior": {
+            "disableBodyPruning": true
+          },
+          "request": {
+            "method": "GET",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseURL}}/api/v1/user/cars-by-user/5",
+              "host": [
+                "{{baseURL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "user",
+                "cars-by-user",
+                "5"
               ]
             }
           },
@@ -2574,37 +2613,29 @@
           "response": []
         },
         {
-          "name": "update booking",
+          "name": "status update",
           "request": {
-            "auth": {
-              "type": "noauth"
-            },
-            "method": "PUT",
+            "method": "POST",
             "header": [],
             "body": {
-              "mode": "formdata",
-              "formdata": [
-                {
-                  "key": "status",
-                  "value": "En Route",
-                  "type": "text",
-                  "uuid": "e34ef6c6-e92a-471a-a0ed-b32fb3553559"
+              "mode": "raw",
+              "raw": "{\r\n    \"bookingId\": 1,\r\n    \"newStatus\": \"confirmed\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
                 }
-              ]
+              }
             },
             "url": {
-              "raw": "http://localhost:3026/api/v1/booking/update-booking/1",
-              "protocol": "http",
+              "raw": "{{baseURL}}/api/v1/booking/update-status",
               "host": [
-                "localhost"
+                "{{baseURL}}"
               ],
-              "port": "3026",
               "path": [
                 "api",
                 "v1",
                 "booking",
-                "update-booking",
-                "1"
+                "update-status"
               ]
             }
           },

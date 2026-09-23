@@ -47,7 +47,6 @@ const STATUS_API_VALUE = {
   completed: 'completed',
 };
 
-const UPDATE_STATUS_API = new Set(['enroute', 'arrived', 'completed']);
 
 const TABS = [
   { key: 'all',       label: 'All' },
@@ -373,7 +372,7 @@ const fetchCarWashOrders = useCallback(async () => {
 
       const response = await bookingService.getAllBookings({
         status: 'all',
-        service: 'car wash',
+        Service: 'car wash', // backend filter key is case-sensitive
         field: '',
         search: '',
         sorting: { field: 'id', order: 'desc' },
@@ -442,15 +441,14 @@ const fetchCarWashOrders = useCallback(async () => {
     let updatedOrder = null;
 
     try {
-      const response = UPDATE_STATUS_API.has(action.next)
-        ? await bookingService.updateStatus({
-            bookingId,
-            driverId: String(order.raw?.driver_id || order.raw?.driverId || order.cleaner?.id || 1),
-            newStatus: STATUS_API_VALUE[action.next] || action.next,
-          })
-        : await bookingService.updateBooking(bookingId, {
-            status: STATUS_API_VALUE[action.next] || action.next,
-          });
+      // Every step (including pending → confirmed) goes through update-status,
+      // matching the "car wash / status update" request in the Postman collection.
+      const driverId = order.raw?.driver_id || order.raw?.driverId || order.cleaner?.id;
+      const response = await bookingService.updateStatus({
+        bookingId,
+        ...(driverId ? { driverId: String(driverId) } : {}),
+        newStatus: STATUS_API_VALUE[action.next] || action.next,
+      });
       const backendOrder = response.data?.booking || response.data?.data || response.data?.result;
       updatedOrder = backendOrder ? mapCarWashBooking(backendOrder) : null;
     } catch (error) {
