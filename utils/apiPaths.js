@@ -91,5 +91,10 @@ export const API_PATHS = {
         GET_ALL_BOOKINGS: "/api/v1/booking/all-bookings",
         GET_BOOKING_BY_ID: (bookingId) => `/api/v1/booking/one-booking-details/${bookingId}`,
         GET_RECENT_BOOKINGS: "/api/v1/booking/recent",
+        // NOTE: Not in the Postman collection yet (its "Delete Booking" request
+        // points at identity/update-profile by mistake). This follows the
+        // backend's other delete routes (PUT .../delete-<thing>/:id) — confirm
+        // the exact path with the backend dev and change it here if different.
+        DELETE_BOOKING: (bookingId) => `/api/v1/booking/delete-booking/${bookingId}`,
     },
 };

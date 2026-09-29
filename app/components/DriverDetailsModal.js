@@ -73,37 +73,37 @@ export default function DriverDetailsModal({ driver, onClose, onUpdate }) {
   const earningsData = [
     {
       dateTime: '26/01/2025-17:10',
-      amount: '$ 2,560.00',
+      amount: '2,560.00 QAR',
       status: 'Pending',
     },
     {
       dateTime: '26/01/2025-17:10',
-      amount: '$ 2,560.00',
+      amount: '2,560.00 QAR',
       status: 'Paid',
     },
     {
       dateTime: '26/01/2025-17:10',
-      amount: '$ 2,560.00',
+      amount: '2,560.00 QAR',
       status: 'Pending',
     },
     {
       dateTime: '26/01/2025-17:10',
-      amount: '$ 2,560.00',
+      amount: '2,560.00 QAR',
       status: 'Paid',
     },
     {
       dateTime: '26/01/2025-17:10',
-      amount: '$ 2,560.00',
+      amount: '2,560.00 QAR',
       status: 'Pending',
     },
     {
       dateTime: '26/01/2025-17:10',
-      amount: '$ 2,560.00',
+      amount: '2,560.00 QAR',
       status: 'Paid',
     },
     {
       dateTime: '26/01/2025-17:10',
-      amount: '$ 2,560.00',
+      amount: '2,560.00 QAR',
       status: 'Pending',
     },
   ];
@@ -470,7 +470,7 @@ export default function DriverDetailsModal({ driver, onClose, onUpdate }) {
             <div>
               <div className="mb-6">
                 <div className="text-sm text-gray-700 mb-2">Current Earnings</div>
-                <div className="text-3xl font-bold text-gray-900">$ 2,560.00</div>
+                <div className="text-3xl font-bold text-gray-900">2,560.00 QAR</div>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full">

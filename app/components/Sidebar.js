@@ -3,8 +3,8 @@
 import {
   LayoutDashboard,
   Users,
-  DollarSign,
-  CreditCard,
+  Tag,
+  Banknote,
   Car,
   MapPin,
   MessageSquare,
@@ -25,8 +25,8 @@ const menuItems = [
   { icon: LayoutDashboard, label: 'Dashboard', href: '/dashboard' },
   { icon: Users, label: 'User Management', href: '/customers' },
   { icon: Droplets, label: 'Car Wash Orders', href: '/orders' },
-  { icon: DollarSign, label: 'Pricing & Fees Management', href: '/pricing' },
-  { icon: CreditCard, label: 'Financial Management', href: '#' },
+  { icon: Tag, label: 'Pricing & Fees Management', href: '/pricing' },
+  { icon: Banknote, label: 'Financial Reports', href: '/finance' },
   { icon: Car, label: 'Fleet & Vehicle Management', href: '#' },
   { icon: MapPin, label: 'Geographic & Service', href: '#' },
   { icon: MessageSquare, label: 'Communication Center', href: '#' },
@@ -81,6 +81,7 @@ export default function Sidebar({ isOpen, toggleSidebar }) {
                   (item.href === '/booking' && pathname.startsWith('/booking')) ||
                   (item.href === '/orders' && pathname.startsWith('/orders')) ||
                   (item.href === '/pricing' && pathname.startsWith('/pricing')) ||
+                  (item.href === '/finance' && pathname.startsWith('/finance')) ||
                   (item.href === '/technical-support' && pathname.startsWith('/technical-support'));
                 const isDisabled = item.href === '#';
                 return (

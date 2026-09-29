@@ -3,13 +3,16 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Search, Phone, X, MapPin, Clock, Droplets, CheckCircle,
-  RotateCcw, ClipboardList,
+  RotateCcw, ClipboardList, Copy, ExternalLink, Send, Trash2, MessageCircle,
 } from 'lucide-react';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import Toast from '../components/Toast';
+import ConfirmationDialog from '../components/ConfirmationDialog';
+import { useAuth } from '../contexts/AuthContext';
 import { bookingService } from '../../utils/axiosInstance';
 import { extractArray } from '../../utils/extractArray';
+import { getMapsUrl, copyText, getWhatsAppUrl } from '../../utils/location';
 
 // ─────────────────────────────────────────────────────────────
 // Order lifecycle model
@@ -139,6 +142,10 @@ const mapCarWashBooking = (booking) => {
     vehicle: booking.car_name || booking.vehicle_name || booking.vehicle || 'N/A',
     numberPlate: booking.car_number || booking.car_number_plate || booking.number_plate || booking.license_plate || booking.plate || '',
     location: booking.from_address || booking.address || booking.location || 'N/A',
+    lat: booking.from_lat ?? booking.lat ?? booking.latitude,
+    lng: booking.from_lng ?? booking.lng ?? booking.longitude,
+    notes: booking.special_instructions || booking.notes || '',
+    payment: booking.payment_channel || booking.payment_method || '',
     time: booking.date_time || formatDateTime(booking.date, booking.time),
     bookedAt: booking.created_at || booking.createdAt || booking.date || 'N/A',
     total: Number(booking.price || booking.total || booking.amount || 0),
@@ -151,6 +158,77 @@ const mapCarWashBooking = (booking) => {
     raw: booking,
   };
 };
+
+const orderMapsUrl = (order) =>
+  getMapsUrl({ lat: order.lat, lng: order.lng, address: order.location });
+
+/** Address + Google Maps pin, the way it's pasted to a cleaner. */
+const locationText = (order) => {
+  const url = orderMapsUrl(order);
+  return [order.location !== 'N/A' ? order.location : '', url].filter(Boolean).join('\n');
+};
+
+const hasValue = (v) => v && v !== '—' && v !== 'N/A';
+
+/** Job sheet sent to the cleaner (WhatsApp / copy-paste). */
+const buildCleanerMessage = (order) => {
+  const url = orderMapsUrl(order);
+  const lines = [
+    `*Miles Ahead — Car Wash Job #${order.id}*`,
+    '',
+    `Date & Time: ${order.time}`,
+    `Service: ${order.package}`,
+    hasValue(order.addOn) ? `Add-ons: ${order.addOn}` : null,
+    `Vehicle: ${order.vehicle}`,
+    `Number Plate: ${order.numberPlate || '—'}`,
+    '',
+    `Customer: ${order.customer.name}`,
+    `Contact: ${order.customer.phone}`,
+    `Location: ${order.location}`,
+    url ? `Map: ${url}` : null,
+    '',
+    `Amount: QAR ${order.total}${order.payment ? ` (${order.payment})` : ''}`,
+    order.notes ? `Notes: ${order.notes}` : null,
+  ];
+  return lines.filter((l) => l !== null).join('\n').replace(/\n{3,}/g, '\n\n');
+};
+
+// ─────────────────────────────────────────────────────────────
+// Location actions (copy / open in Maps)
+// ─────────────────────────────────────────────────────────────
+function LocationActions({ order, onCopy, size = 'sm' }) {
+  const url = orderMapsUrl(order);
+  const btn = size === 'sm'
+    ? 'w-7 h-7'
+    : 'w-8 h-8';
+  if (!url && !hasValue(order.location)) return null;
+  return (
+    <span className="inline-flex items-center gap-1 shrink-0">
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); onCopy(order); }}
+        className={`${btn} flex items-center justify-center text-gray-500 border border-gray-200 hover:text-[var(--primary)] hover:border-[var(--primary)] transition-colors`}
+        title="Copy location"
+        aria-label={`Copy location for order ${order.id}`}
+      >
+        <Copy className="w-3.5 h-3.5" aria-hidden="true" />
+      </button>
+      {url && (
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className={`${btn} flex items-center justify-center text-gray-500 border border-gray-200 hover:text-[var(--primary)] hover:border-[var(--primary)] transition-colors`}
+          title="Open in Google Maps"
+          aria-label={`Open location for order ${order.id} in Google Maps`}
+        >
+          <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" />
+        </a>
+      )}
+    </span>
+  );
+}
 
 // ─────────────────────────────────────────────────────────────
 // Status pill
@@ -167,7 +245,7 @@ function StatusPill({ status }) {
 // ─────────────────────────────────────────────────────────────
 // Order detail drawer
 // ─────────────────────────────────────────────────────────────
-function OrderDrawer({ order, onClose, onAdvance }) {
+function OrderDrawer({ order, onClose, onAdvance, onCopyLocation, onCopyMessage, canDelete, onDelete }) {
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', onKey);
@@ -195,10 +273,12 @@ function OrderDrawer({ order, onClose, onAdvance }) {
     ['Add-on', order.addOn || '—'],
     ['Vehicle', order.vehicle],
     ['Number Plate', order.numberPlate || '—'],
-    ['Location', order.location],
     ['Slot', order.time],
     ['Total', `QAR ${order.total}`],
+    ...(order.payment ? [['Payment', order.payment]] : []),
+    ...(order.notes ? [['Notes', order.notes]] : []),
   ];
+  const cleanerMessage = buildCleanerMessage(order);
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
@@ -263,6 +343,14 @@ function OrderDrawer({ order, onClose, onAdvance }) {
             ))}
           </div>
 
+          {/* Location */}
+          <div className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold mt-4 mb-2">Location</div>
+          <div className="bg-gray-50 border border-gray-100 rounded-lg p-3 flex items-start gap-3">
+            <MapPin className="w-4 h-4 text-[var(--primary)] shrink-0 mt-0.5" aria-hidden="true" />
+            <div className="text-[12px] text-gray-900 font-medium flex-1 min-w-0 break-words">{order.location}</div>
+            <LocationActions order={order} onCopy={onCopyLocation} size="md" />
+          </div>
+
           {/* Cleaner */}
           <div className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold mt-4 mb-2">Cleaner Assigned</div>
           {order.cleaner ? (
@@ -312,6 +400,44 @@ function OrderDrawer({ order, onClose, onAdvance }) {
               );
             })}
           </div>
+
+          {/* Job sheet for the cleaner */}
+          <div className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold mt-4 mb-2">Send to Cleaner</div>
+          <pre className="bg-gray-50 border border-gray-100 rounded-lg p-3 text-[11px] leading-relaxed text-gray-700 whitespace-pre-wrap break-words font-sans">
+            {cleanerMessage}
+          </pre>
+          <div className="grid grid-cols-2 gap-2 mt-2">
+            <button
+              type="button"
+              onClick={() => onCopyMessage(order)}
+              className={`py-2 text-[12px] font-semibold flex items-center justify-center gap-1.5 transition-colors ${TONE.ghost}`}
+            >
+              <Copy className="w-3.5 h-3.5" aria-hidden="true" /> Copy Job
+            </button>
+            <a
+              href={getWhatsAppUrl(cleanerMessage, order.cleaner?.phone !== 'N/A' ? order.cleaner?.phone : '')}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="py-2 text-[12px] font-semibold flex items-center justify-center gap-1.5 bg-green-600 text-white hover:bg-green-700 transition-colors"
+            >
+              <MessageCircle className="w-3.5 h-3.5" aria-hidden="true" /> WhatsApp
+            </a>
+          </div>
+          <p className="text-[10px] text-gray-500 mt-1.5">
+            {order.cleaner && order.cleaner.phone !== 'N/A'
+              ? `WhatsApp opens a chat with ${order.cleaner.name}.`
+              : 'No cleaner assigned — WhatsApp will ask who to send it to.'}
+          </p>
+
+          {canDelete && (
+            <button
+              type="button"
+              onClick={() => onDelete([order])}
+              className="w-full mt-5 py-2 text-[12px] font-semibold flex items-center justify-center gap-1.5 text-red-600 border border-red-200 hover:bg-red-50 transition-colors"
+            >
+              <Trash2 className="w-3.5 h-3.5" aria-hidden="true" /> Delete Order
+            </button>
+          )}
         </div>
 
         {/* Actions */}
@@ -362,6 +488,11 @@ export default function OrdersPage() {
   const [toast, setToast] = useState(null);
   const [ordersLoading, setOrdersLoading] = useState(true);
   const [ordersError, setOrdersError] = useState(null);
+  const [checkedIds, setCheckedIds] = useState(() => new Set());
+  const [pendingDelete, setPendingDelete] = useState(null); // orders awaiting confirmation
+  const [deleting, setDeleting] = useState(false);
+  const { hasPermission } = useAuth();
+  const canDelete = hasPermission('canDeleteRecords');
 
   const toggleSidebar = useCallback(() => setSidebarOpen((v) => !v), []);
 
@@ -424,10 +555,99 @@ const fetchCarWashOrders = useCallback(async () => {
     [orders, selectedId]
   );
 
+  const checkedOrders = useMemo(
+    () => orders.filter((o) => checkedIds.has(o.id)),
+    [orders, checkedIds]
+  );
+  const allVisibleChecked = visibleOrders.length > 0 && visibleOrders.every((o) => checkedIds.has(o.id));
+
+  const toggleChecked = useCallback((id) => {
+    setCheckedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const toggleAllVisible = useCallback(() => {
+    setCheckedIds((prev) => {
+      const next = new Set(prev);
+      if (allVisibleChecked) visibleOrders.forEach((o) => next.delete(o.id));
+      else visibleOrders.forEach((o) => next.add(o.id));
+      return next;
+    });
+  }, [allVisibleChecked, visibleOrders]);
+
+  const handleCopyLocation = useCallback(async (order) => {
+    const ok = await copyText(locationText(order));
+    setToast(ok
+      ? { message: `Location for #${order.id} copied`, type: 'success' }
+      : { message: 'Could not copy — please copy it manually.', type: 'error' });
+  }, []);
+
+  const handleCopyMessage = useCallback(async (list) => {
+    const items = Array.isArray(list) ? list : [list];
+    if (items.length === 0) return;
+    const text = items.map(buildCleanerMessage).join('\n\n────────────\n\n');
+    const ok = await copyText(text);
+    setToast(ok
+      ? { message: items.length === 1 ? `Job #${items[0].id} copied — paste it to the cleaner` : `${items.length} jobs copied — paste them to the cleaner`, type: 'success' }
+      : { message: 'Could not copy — please copy it manually.', type: 'error' });
+  }, []);
+
+  const handleShareSelected = useCallback(() => {
+    if (checkedOrders.length === 0) return;
+    const text = checkedOrders.map(buildCleanerMessage).join('\n\n────────────\n\n');
+    window.open(getWhatsAppUrl(text), '_blank', 'noopener,noreferrer');
+  }, [checkedOrders]);
+
+  const confirmDelete = useCallback(async () => {
+    const list = pendingDelete || [];
+    if (list.length === 0 || !canDelete) return;
+    if (ordersError) {
+      setToast({ message: 'These are demo orders — nothing to delete on the server.', type: 'warning' });
+      return;
+    }
+
+    setDeleting(true);
+    const deleted = [];
+    let lastError = null;
+    for (const order of list) {
+      try {
+        await bookingService.deleteBooking(order.originalId || order.raw?.id);
+        deleted.push(order.id);
+      } catch (error) {
+        console.error(`Error deleting order #${order.id}:`, error);
+        lastError = error;
+      }
+    }
+    setDeleting(false);
+
+    if (deleted.length > 0) {
+      setOrders((prev) => prev.filter((o) => !deleted.includes(o.id)));
+      setCheckedIds((prev) => {
+        const next = new Set(prev);
+        deleted.forEach((id) => next.delete(id));
+        return next;
+      });
+      if (deleted.includes(selectedId)) setSelectedId(null);
+    }
+
+    if (!lastError) {
+      setToast({ message: deleted.length === 1 ? `Order #${deleted[0]} deleted` : `${deleted.length} orders deleted`, type: 'success' });
+    } else if (lastError.status === 404) {
+      setToast({ message: 'Delete is not available on the server yet — the backend needs a delete-booking endpoint.', type: 'error' });
+    } else {
+      const failed = list.length - deleted.length;
+      setToast({ message: `${failed} of ${list.length} order(s) could not be deleted: ${lastError.message || 'unknown error'}`, type: 'error' });
+    }
+  }, [pendingDelete, canDelete, ordersError, selectedId]);
+
   const resetOrdersView = useCallback(() => {
     setActiveTab('all');
     setQuery('');
     setSelectedId(null);
+    setCheckedIds(new Set());
     fetchCarWashOrders();
     setToast({ message: 'Order filters reset', type: 'info' });
   }, [fetchCarWashOrders]);
@@ -568,12 +788,55 @@ const fetchCarWashOrders = useCallback(async () => {
                 </div>
               )}
 
+              {/* Bulk actions */}
+              {checkedOrders.length > 0 && (
+                <div className="mx-5 mt-3 px-3 py-2 flex flex-wrap items-center gap-2 bg-[var(--primary)]/5 border border-[var(--primary)]/20 text-sm">
+                  <span className="font-medium text-gray-800 mr-auto">{checkedOrders.length} selected</span>
+                  <button
+                    onClick={() => handleCopyMessage(checkedOrders)}
+                    className={`text-xs font-medium px-3 py-1.5 flex items-center gap-1.5 ${TONE.ghost}`}
+                  >
+                    <Copy className="w-3.5 h-3.5" aria-hidden="true" /> Copy Jobs
+                  </button>
+                  <button
+                    onClick={handleShareSelected}
+                    className="text-xs font-medium px-3 py-1.5 flex items-center gap-1.5 bg-green-600 text-white hover:bg-green-700"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5" aria-hidden="true" /> WhatsApp
+                  </button>
+                  {canDelete && (
+                    <button
+                      onClick={() => setPendingDelete(checkedOrders)}
+                      disabled={deleting}
+                      className="text-xs font-medium px-3 py-1.5 flex items-center gap-1.5 text-red-600 bg-white border border-red-200 hover:bg-red-50 disabled:opacity-50"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" aria-hidden="true" /> {deleting ? 'Deleting…' : 'Delete'}
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setCheckedIds(new Set())}
+                    className="text-xs text-gray-500 hover:text-gray-800 px-2"
+                  >
+                    Clear
+                  </button>
+                </div>
+              )}
+
               {/* Table */}
               <div className="p-4 sm:p-5">
                 <div className="overflow-x-auto border border-gray-200 rounded-lg">
-                  <table className="w-full border-collapse min-w-[860px]">
+                  <table className="w-full border-collapse min-w-[960px]">
                     <thead>
                       <tr>
+                        <th className="bg-gray-50 pl-3.5 pr-1 py-2.5 border-b border-gray-200 w-8">
+                          <input
+                            type="checkbox"
+                            checked={allVisibleChecked}
+                            onChange={toggleAllVisible}
+                            className="w-4 h-4 accent-[var(--primary)]"
+                            aria-label="Select all orders in this view"
+                          />
+                        </th>
                         {['Order', 'Customer', 'Service', 'Number Plate', 'Location', 'Time', 'Status', ''].map((h, i) => (
                           <th
                             key={i}
@@ -593,6 +856,15 @@ const fetchCarWashOrders = useCallback(async () => {
                             onClick={() => setSelectedId(o.id)}
                             className="cursor-pointer hover:bg-gray-50 border-b border-gray-100 last:border-0"
                           >
+                            <td className="pl-3.5 pr-1 py-3" onClick={(e) => e.stopPropagation()}>
+                              <input
+                                type="checkbox"
+                                checked={checkedIds.has(o.id)}
+                                onChange={() => toggleChecked(o.id)}
+                                className="w-4 h-4 accent-[var(--primary)]"
+                                aria-label={`Select order ${o.id}`}
+                              />
+                            </td>
                             <td className="px-3.5 py-3 text-sm font-semibold text-gray-900 whitespace-nowrap">#{o.id}</td>
                             <td className="px-3.5 py-3">
                               <div className="text-sm font-medium text-gray-900">{o.customer.name}</div>
@@ -602,10 +874,23 @@ const fetchCarWashOrders = useCallback(async () => {
                               {o.package} <span className="text-gray-400">· {o.vehicle}</span>
                             </td>
                             <td className="px-3.5 py-3 text-sm text-gray-700 whitespace-nowrap font-medium">{o.numberPlate || '—'}</td>
-                            <td className="px-3.5 py-3 text-sm text-gray-700 whitespace-nowrap">{o.location}</td>
+                            <td className="px-3.5 py-3 text-sm text-gray-700">
+                              <div className="flex items-center gap-2">
+                                <span className="max-w-[220px] truncate" title={o.location}>{o.location}</span>
+                                <LocationActions order={o} onCopy={handleCopyLocation} />
+                              </div>
+                            </td>
                             <td className="px-3.5 py-3 text-sm text-gray-700 whitespace-nowrap">{o.time}</td>
                             <td className="px-3.5 py-3"><StatusPill status={o.status} /></td>
                             <td className="px-3.5 py-3 text-right whitespace-nowrap">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleCopyMessage(o); }}
+                                className="inline-flex items-center justify-center w-7 h-7 mr-1.5 align-middle text-gray-500 border border-gray-200 hover:text-[var(--primary)] hover:border-[var(--primary)] transition-colors"
+                                title="Copy job details for the cleaner"
+                                aria-label={`Copy job details for order ${o.id}`}
+                              >
+                                <Send className="w-3.5 h-3.5" aria-hidden="true" />
+                              </button>
                               {action ? (
                                 <button
                                   onClick={(e) => { e.stopPropagation(); advanceOrder(o); }}
@@ -638,7 +923,7 @@ const fetchCarWashOrders = useCallback(async () => {
 
                 <div className="flex items-center gap-1.5 text-[11px] text-gray-400 mt-3">
                   <Clock className="w-3.5 h-3.5" aria-hidden="true" />
-                  Tap a row to open the order · one tap advances the status
+                  Tap a row to open the order · one tap advances the status · tick orders to send them to a cleaner{canDelete ? ' or delete them' : ''}
                 </div>
               </div>
             </div>
@@ -651,8 +936,26 @@ const fetchCarWashOrders = useCallback(async () => {
           order={selectedOrder}
           onClose={() => setSelectedId(null)}
           onAdvance={advanceOrder}
+          onCopyLocation={handleCopyLocation}
+          onCopyMessage={handleCopyMessage}
+          canDelete={canDelete}
+          onDelete={setPendingDelete}
         />
       )}
+
+      <ConfirmationDialog
+        isOpen={!!pendingDelete}
+        onClose={() => setPendingDelete(null)}
+        onConfirm={confirmDelete}
+        type="error"
+        title={pendingDelete?.length > 1 ? `Delete ${pendingDelete.length} orders?` : 'Delete order?'}
+        message={
+          pendingDelete?.length > 1
+            ? `This permanently removes ${pendingDelete.length} orders (${pendingDelete.map((o) => `#${o.id}`).join(', ')}). This cannot be undone.`
+            : `This permanently removes order #${pendingDelete?.[0]?.id}. This cannot be undone.`
+        }
+        confirmText="Delete"
+      />
 
       {toast && (
         <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />

@@ -161,7 +161,7 @@ export default function PendingRequests() {
                                                         </span>
                                                     </td>
                                                     <td className="px-6 py-4 text-sm font-semibold text-gray-900">
-                                                        ${booking.price || 'N/A'}
+                                                        {booking.price ? `${booking.price} QAR` : 'N/A'}
                                                     </td>
                                                 </tr>
                                             ))
@@ -207,7 +207,7 @@ export default function PendingRequests() {
                                                             </div>
                                                             <div className="flex items-center justify-between mt-2">
                                                                 <span className="text-sm text-gray-600">Distance: {booking.distance || 'N/A'}</span>
-                                                                <span className="text-sm font-semibold text-gray-900">${booking.price || 'N/A'}</span>
+                                                                <span className="text-sm font-semibold text-gray-900">{booking.price ? `${booking.price} QAR` : 'N/A'}</span>
                                                             </div>
                                                         </div>
                                                     </div>

@@ -7,8 +7,12 @@ import Header from '../../components/Header';
 import ProtectedRoute from '../../components/ProtectedRoute';
 import { driverService } from '../../../utils/axiosInstance';
 import { extractArray } from '../../../utils/extractArray';
+import { isCleanerAccount, isActiveAccount } from '../../../utils/accounts';
 import { ArrowLeft, User, Phone, MapPin, Star } from 'lucide-react';
 import Skeleton from '../../components/Skeleton';
+
+const getDisplayName = (d) =>
+    d.name || d.full_name || `${d.firstname || ''} ${d.lastname || ''}`.trim() || d.username || 'N/A';
 
 export default function ActiveDrivers() {
     const router = useRouter();
@@ -41,15 +45,9 @@ export default function ActiveDrivers() {
 
                 if (controller.signal.aborted) return;
 
-                const allDrivers = extractArray(response);
-                const activeDrivers = allDrivers.filter(d => {
-                    const status = d.status?.toLowerCase();
-                    const accountStatus = d.accountStatus?.toLowerCase();
-                    const driverStatus = d.driver_status?.toLowerCase();
-                    return status === 'active' || accountStatus === 'active' || driverStatus === 'online' ||
-                        d.status === 1 || d.is_active === 1 || d.is_active === true ||
-                        d.active === 1 || d.active === true || d.isActive === 1;
-                });
+                // identity/all-users also returns Admin/Manager accounts — keep cleaners only.
+                const allDrivers = extractArray(response).filter(isCleanerAccount);
+                const activeDrivers = allDrivers.filter(isActiveAccount);
 
                 setDrivers(activeDrivers);
             } catch (error) {
@@ -99,7 +97,7 @@ export default function ActiveDrivers() {
 
                 <div className="flex-1 flex flex-col min-h-screen lg:ml-[240px] w-full lg:w-auto overflow-x-hidden">
                     <div className="px-4 md:px-6 pt-4 md:pt-6">
-                        <Header title="Active Drivers Details" toggleSidebar={toggleSidebar} />
+                        <Header title="Active Cleaners" toggleSidebar={toggleSidebar} />
                     </div>
 
                     <main className="flex-1 px-4 md:px-6 pb-6">
@@ -117,7 +115,7 @@ export default function ActiveDrivers() {
                         <div className="mb-6">
                             <input
                                 type="text"
-                                placeholder="Search by driver ID, name, email, or phone..."
+                                placeholder="Search by cleaner ID, name, email, or phone..."
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
                                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-purple-500"
@@ -128,7 +126,7 @@ export default function ActiveDrivers() {
                         <div className="bg-white rounded-xl shadow-sm overflow-hidden">
                             <div className="overflow-x-auto">
                                 {/* Desktop Table */}
-                                <table className="w-full hidden md:table" aria-label="Active drivers">
+                                <table className="w-full hidden md:table" aria-label="Active cleaners">
                                     <thead className="bg-gray-50 border-b border-gray-200">
                                         <tr>
                                             <th scope="col" className="px-6 py-3 text-left text-sm font-semibold text-gray-700">ID</th>
@@ -145,14 +143,14 @@ export default function ActiveDrivers() {
                                         ) : filteredDrivers.length === 0 ? (
                                             <tr>
                                                 <td colSpan="6" className="px-6 py-8 text-center text-gray-500">
-                                                    No active drivers found
+                                                    No active cleaners found
                                                 </td>
                                             </tr>
                                         ) : (
                                             filteredDrivers.map((driver, index) => (
                                                 <tr key={driver.id || index} className="border-b border-gray-200 hover:bg-gray-50">
                                                     <td className="px-6 py-4 text-sm text-gray-900">#{driver.id}</td>
-                                                    <td className="px-6 py-4 text-sm text-gray-600">{driver.name || 'N/A'}</td>
+                                                    <td className="px-6 py-4 text-sm text-gray-600">{getDisplayName(driver)}</td>
                                                     <td className="px-6 py-4 text-sm text-gray-600">{driver.email || 'N/A'}</td>
                                                     <td className="px-6 py-4 text-sm text-gray-600">{driver.phone || 'N/A'}</td>
                                                     <td className="px-6 py-4 text-sm">
@@ -182,7 +180,7 @@ export default function ActiveDrivers() {
                                         </div>
                                     ) : filteredDrivers.length === 0 ? (
                                         <div className="px-6 py-8 text-center text-gray-500">
-                                            No active drivers found
+                                            No active cleaners found
                                         </div>
                                     ) : (
                                         filteredDrivers.map((driver, index) => (
@@ -198,7 +196,7 @@ export default function ActiveDrivers() {
                                                         <div className="mt-2 space-y-1">
                                                             <div className="flex items-center gap-2 text-sm text-gray-600">
                                                                 <User size={14} aria-hidden="true" />
-                                                                <span>{driver.name || 'N/A'}</span>
+                                                                <span>{getDisplayName(driver)}</span>
                                                             </div>
                                                             <div className="flex items-center gap-2 text-sm text-gray-600">
                                                                 <MapPin size={14} aria-hidden="true" />
@@ -224,7 +222,7 @@ export default function ActiveDrivers() {
                             {/* Summary */}
                             <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
                                 <p className="text-sm text-gray-600">
-                                    Total Active Drivers: <span className="font-semibold text-gray-900">{filteredDrivers.length}</span>
+                                    Total Active Cleaners: <span className="font-semibold text-gray-900">{filteredDrivers.length}</span>
                                 </p>
                             </div>
                         </div>

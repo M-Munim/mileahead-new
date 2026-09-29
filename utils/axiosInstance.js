@@ -228,4 +228,7 @@ export const bookingService = {
 
     getRecentBookings: () =>
         api.get(API_PATHS.BOOKING.GET_RECENT_BOOKINGS),
+
+    deleteBooking: (id) =>
+        api.put(API_PATHS.BOOKING.DELETE_BOOKING(id)),
 };

@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Package, Car, PlusCircle, Save, RotateCcw, AlertCircle } from 'lucide-react';
+import { Package, Car, PlusCircle, Save, RotateCcw, AlertCircle, Lock } from 'lucide-react';
 import { packageService, vehicleService, addonService } from '../../utils/axiosInstance';
 import { extractArray } from '../../utils/extractArray';
+import { useAuth } from '../contexts/AuthContext';
 import Toast from './Toast';
 
 /**
@@ -69,6 +70,8 @@ function toPriceInput(value) {
 }
 
 export default function CarWashPricing() {
+  const { hasPermission } = useAuth();
+  const canEdit = hasPermission('canManagePricing');
   const [rows, setRows] = useState({ packages: [], vehicles: [], addons: [] });
   const [drafts, setDrafts] = useState({});
   const [loading, setLoading] = useState(true);
@@ -108,6 +111,10 @@ export default function CarWashPricing() {
   };
 
   const handleSave = async (group, row) => {
+    if (!canEdit) {
+      setToast({ message: 'Only an Admin can change prices.', type: 'error' });
+      return;
+    }
     const key = `${group.key}:${row.id}`;
     const raw = drafts[key];
     const price = Number(raw);
@@ -178,12 +185,22 @@ export default function CarWashPricing() {
 
   return (
     <div className="space-y-6">
-      <div className="bg-green-50 border border-green-200 p-4">
-        <p className="text-sm text-green-800">
-          <strong>These prices are live.</strong> Saving a change here updates what
-          customers are charged for a car wash straight away.
-        </p>
-      </div>
+      {canEdit ? (
+        <div className="bg-green-50 border border-green-200 p-4">
+          <p className="text-sm text-green-800">
+            <strong>These prices are live.</strong> Saving a change here updates what
+            customers are charged for a car wash straight away.
+          </p>
+        </div>
+      ) : (
+        <div className="bg-gray-50 border border-gray-200 p-4 flex gap-3">
+          <Lock className="w-5 h-5 text-gray-500 shrink-0 mt-0.5" aria-hidden="true" />
+          <p className="text-sm text-gray-700">
+            <strong>View only.</strong> These are the live car wash prices. Only an
+            Admin can change them.
+          </p>
+        </div>
+      )}
 
       {GROUPS.map((group) => {
         const GroupIcon = group.icon;
@@ -224,6 +241,11 @@ export default function CarWashPricing() {
                         )}
                       </div>
 
+                      {!canEdit ? (
+                        <div className="text-sm font-semibold text-gray-900">
+                          {Number(row.price || 0).toFixed(2)} <span className="text-gray-500 font-normal">QAR</span>
+                        </div>
+                      ) : (
                       <div className="flex items-center gap-2">
                         <label htmlFor={`price-${key}`} className="sr-only">
                           Price for {row[group.nameField]} in QAR
@@ -262,6 +284,7 @@ export default function CarWashPricing() {
                           {isSaving ? 'Saving...' : 'Save'}
                         </button>
                       </div>
+                      )}
                     </li>
                   );
                 })}

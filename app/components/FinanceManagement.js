@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { DollarSign, TrendingUp, TrendingDown, Wallet, CreditCard, Car, Calendar, Download, Printer } from 'lucide-react';
+import { Banknote, TrendingUp, TrendingDown, Wallet, CreditCard, Car, Calendar, Download, Printer } from 'lucide-react';
 import { bookingService, driverService } from '../../utils/axiosInstance';
 import { extractArray } from '../../utils/extractArray';
+import { isCleanerAccount } from '../../utils/accounts';
 import { exportToCSV, printReport, buildTableHtml } from '../../utils/exportData';
 
 export default function FinanceManagement() {
@@ -99,7 +100,7 @@ export default function FinanceManagement() {
       if (controller?.signal?.aborted) return;
 
       const bookings = extractArray(bookingsResponse);
-      const drivers = extractArray(driversResponse);
+      const drivers = extractArray(driversResponse).filter(isCleanerAccount);
 
       // Calculate date range based on timeframe
       const now = new Date();
@@ -380,7 +381,7 @@ export default function FinanceManagement() {
             <div className="text-4xl font-bold">{metrics.totalRevenue} QAR</div>
           </div>
           <div className="w-16 h-16 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center">
-            <DollarSign className="w-8 h-8" aria-hidden="true" />
+            <Banknote className="w-8 h-8" aria-hidden="true" />
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -437,7 +438,7 @@ export default function FinanceManagement() {
         <div className="bg-linear-to-br from-orange-50 to-orange-100 rounded-lg p-4 border border-orange-200">
           <div className="flex items-center justify-between mb-3">
             <div className="w-10 h-10 rounded-lg bg-orange-500 flex items-center justify-center">
-              <DollarSign className="w-5 h-5 text-white" aria-hidden="true" />
+              <Banknote className="w-5 h-5 text-white" aria-hidden="true" />
             </div>
           </div>
           <div className="text-2xl font-bold text-gray-900">{metrics.platformCommission} QAR</div>
@@ -453,7 +454,7 @@ export default function FinanceManagement() {
           <div className="bg-green-50 rounded-lg p-4 border border-green-200">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-lg bg-green-500 flex items-center justify-center shrink-0">
-                <DollarSign className="w-6 h-6 text-white" aria-hidden="true" />
+                <Banknote className="w-6 h-6 text-white" aria-hidden="true" />
               </div>
               <div className="flex-1">
                 <div className="text-2xl font-bold text-green-700">{metrics.completedPayments} QAR</div>

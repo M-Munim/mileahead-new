@@ -14,18 +14,19 @@ import ActiveDriversReport from '../components/ActiveDriversReport';
 import RidesManagement from '../components/RidesManagement';
 import FinanceManagement from '../components/FinanceManagement';
 import SupportManagement from '../components/SupportManagement';
-import { Calendar, Users, Globe, Clock, BarChart3, Car, DollarSign, Headphones } from 'lucide-react';
+import { Calendar, Users, Globe, Clock, BarChart3, Car, Banknote, Headphones } from 'lucide-react';
 import ProtectedRoute from '../components/ProtectedRoute';
 import Skeleton from '../components/Skeleton';
 import { bookingService, driverService, userService, ratingService } from '../../utils/axiosInstance';
 import { extractArray } from '../../utils/extractArray';
+import { isCleanerAccount, isActiveAccount } from '../../utils/accounts';
 
 const TABS = [
   { id: 'overview', label: 'Overview', icon: BarChart3 },
   { id: 'users', label: 'Active Users', icon: Users },
   { id: 'drivers', label: 'Active Drivers', icon: Car },
   { id: 'rides', label: 'Rides Management', icon: Calendar },
-  { id: 'finance', label: 'Finance', icon: DollarSign },
+  { id: 'finance', label: 'Finance', icon: Banknote },
   { id: 'support', label: 'Support', icon: Headphones },
 ];
 
@@ -84,7 +85,8 @@ export default function Dashboard() {
         if (controller.signal.aborted) return;
 
         const bookingsData = extractArray(bookingsResponse);
-        const driversData = extractArray(driversResponse);
+        // identity/all-users also returns Admin/Manager accounts — keep cleaners only.
+        const driversData = extractArray(driversResponse).filter(isCleanerAccount);
         const usersData = extractArray(usersResponse);
         const ratingsData = ratingsResponse ? extractArray(ratingsResponse) : [];
 
@@ -100,14 +102,7 @@ export default function Dashboard() {
           return status === 'pending' || b.status === 0;
         }).length;
 
-        const activeDrivers = driversData.filter(d => {
-          const status = d.status?.toLowerCase?.();
-          const accountStatus = d.accountStatus?.toLowerCase?.();
-          const driverStatus = d.driver_status?.toLowerCase?.();
-          return status === 'active' || accountStatus === 'active' || driverStatus === 'online' ||
-            d.status === 1 || d.is_active === 1 || d.is_active === true ||
-            d.active === 1 || d.active === true || d.isActive === 1;
-        }).length;
+        const activeDrivers = driversData.filter(isActiveAccount).length;
 
         const totalBookings = bookingsData.length;
         const completedBookings = bookingsData.filter(b => b.status?.toLowerCase?.() === 'completed').length;

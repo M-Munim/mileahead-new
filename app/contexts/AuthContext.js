@@ -19,8 +19,7 @@ export const ROLE_NAMES = {
 };
 
 // Role permissions.
-// Both roles currently get full access to the admin panel. Flip any of
-// these to `false` later if you want to restrict what a Manager can see.
+// Flip any of these to change what a Manager can do.
 export const ROLE_PERMISSIONS = {
   [ROLES.ADMIN]: {
     canAccessDashboard: true,
@@ -28,6 +27,7 @@ export const ROLE_PERMISSIONS = {
     canManageBookings: true,
     canManageFinance: true,
     canManagePricing: true,
+    canDeleteRecords: true,
     canManageFleet: true,
     canAccessReports: true,
     canManageSettings: true,
@@ -37,7 +37,10 @@ export const ROLE_PERMISSIONS = {
     canManageUsers: true,
     canManageBookings: true,
     canManageFinance: true,
-    canManagePricing: true,
+    // Client request: only Admin changes prices for now. Managers still see them.
+    canManagePricing: false,
+    // Deleting records (data cleanup) is Admin only.
+    canDeleteRecords: false,
     canManageFleet: true,
     canAccessReports: true,
     canManageSettings: true,
