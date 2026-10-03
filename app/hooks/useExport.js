@@ -17,7 +17,7 @@ export function useExport({ columns, headerMap, filename, title }) {
 
   const handlePrintReport = useCallback((data) => {
     const html = buildTableHtml(data, columns, headerMap);
-    printReport(`${title} — Miles Ahead`, html);
+    printReport(`${title} — Magic Track`, html);
   }, [columns, headerMap, title]);
 
   return { handleExportCSV, handlePrintReport };

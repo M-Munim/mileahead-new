@@ -214,7 +214,7 @@ export default function ActiveUsersReport() {
                 ...chartData.map(d => ({ metric: `Active Users - ${d.day}`, value: d.users, period: d.date })),
               ];
               const html = buildTableHtml(data, ['metric', 'value', 'period'], { metric: 'Metric', value: 'Value', period: 'Period' });
-              printReport('Active Users Report — Miles Ahead', html);
+              printReport('Active Users Report — Magic Track', html);
             }}
             className="flex items-center gap-1.5 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium text-gray-700"
             aria-label="Print report"

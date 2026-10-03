@@ -6,15 +6,18 @@ const inter = Inter({ subsets: ["latin"] });
 
 export const metadata = {
   title: {
-    default: "Miles Ahead Dashboard",
-    template: "%s | Miles Ahead",
+    default: "Magic Track Dashboard",
+    template: "%s | Magic Track",
   },
-  description: "Miles Ahead Dashboard - Ride Management System for chauffeur services in Qatar",
-  keywords: ["ride management", "chauffeur", "Qatar", "dashboard", "fleet management"],
-  authors: [{ name: "Miles Ahead" }],
+  description: "Magic Track Dashboard - Car Wash & Auto Care order management in Qatar",
+  keywords: ["car wash", "auto care", "Qatar", "dashboard", "orders"],
+  authors: [{ name: "Magic Track" }],
+  icons: {
+    apple: "/apple-touch-icon.png",
+  },
   openGraph: {
-    title: "Miles Ahead Dashboard",
-    description: "Ride Management System for chauffeur services",
+    title: "Magic Track Dashboard",
+    description: "Car Wash & Auto Care order management",
     type: "website",
     locale: "en_US",
   },

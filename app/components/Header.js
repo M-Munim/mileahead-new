@@ -15,13 +15,13 @@ export default function Header({ title, toggleSidebar }) {
   };
 
   const roleColors = {
-    [ROLES.ADMIN]: 'bg-purple-500',
-    [ROLES.MANAGER]: 'bg-blue-500',
+    [ROLES.ADMIN]: 'bg-[var(--primary)]',
+    [ROLES.MANAGER]: 'bg-neutral-600',
   };
 
   const roleBadgeColors = {
-    [ROLES.ADMIN]: 'bg-purple-100 text-purple-700',
-    [ROLES.MANAGER]: 'bg-blue-100 text-blue-700',
+    [ROLES.ADMIN]: 'bg-orange-100 text-orange-800',
+    [ROLES.MANAGER]: 'bg-gray-100 text-gray-800',
   };
 
   const RoleIcon = role ? roleIcons[role] : Shield;
@@ -36,7 +36,7 @@ export default function Header({ title, toggleSidebar }) {
   };
 
   return (
-    <div className="animate-fade-in bg-gradient-to-r from-[var(--primary)] via-[#0d9488] to-[#0f766e] p-4 md:p-5 mb-6 relative overflow-hidden">
+    <div className="animate-fade-in bg-gradient-to-r from-[var(--brand-black)] via-[var(--brand-black-soft)] to-[#2a2a2a] border-b-[3px] border-[var(--primary)] p-4 md:p-5 mb-6 relative overflow-hidden">
       {/* Subtle pattern overlay */}
       <div className="absolute inset-0 opacity-[0.05]">
         <svg className="w-full h-full" preserveAspectRatio="none" viewBox="0 0 1000 200" aria-hidden="true">
@@ -70,7 +70,7 @@ export default function Header({ title, toggleSidebar }) {
 
             <button className="btn-icon relative w-9 h-9 bg-white/10 flex items-center justify-center hover:bg-white/20 transition-all" title="Notifications" aria-label="Notifications">
               <Bell className="w-[18px] h-[18px] text-white/80" aria-hidden="true" />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-400 rounded-full ring-2 ring-[#0d9488]"></span>
+              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-400 rounded-full ring-2 ring-[var(--brand-black-soft)]"></span>
             </button>
 
             <button
@@ -100,7 +100,7 @@ export default function Header({ title, toggleSidebar }) {
 
             {/* Avatar + Role Badge Group */}
             <div className="relative">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold text-sm ring-2 ring-white/25 ${roleColors[role] || 'bg-gradient-to-br from-purple-400 to-pink-400'}`}>
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold text-sm ring-2 ring-white/25 ${roleColors[role] || 'bg-[var(--primary)]'}`}>
                 {avatarInitials}
               </div>
               {roleName && (

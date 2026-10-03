@@ -260,7 +260,7 @@ export default function RidesManagement() {
   const handlePrintReport = () => {
     const data = rides.map(r => ({ ...r, status: formatStatusLabel(r.status) }));
     const html = buildTableHtml(data, rideExportColumns, rideExportHeaders);
-    printReport('Rides Report — Miles Ahead', html);
+    printReport('Rides Report — Magic Track', html);
   };
 
   const formatStatusLabel = (status) => {

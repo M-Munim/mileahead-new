@@ -67,7 +67,7 @@ export function printReport(title, tableHtml) {
             <h1>${title}</h1>
             <div class="subtitle">Generated on ${new Date().toLocaleString()}</div>
             ${tableHtml}
-            <div class="footer">Miles Ahead Admin Panel</div>
+            <div class="footer">Magic Track Admin Panel</div>
             <script>window.onload = function() { window.print(); }</script>
         </body>
         </html>

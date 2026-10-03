@@ -1,6 +1,6 @@
 export const metadata = {
   title: "Dashboard",
-  description: "Miles Ahead Dashboard - Overview of rides, drivers, users, and finance",
+  description: "Magic Track Dashboard - Overview of rides, drivers, users, and finance",
 };
 
 export default function DashboardLayout({ children }) {

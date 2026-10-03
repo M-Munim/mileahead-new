@@ -102,7 +102,7 @@ function PageLoader() {
       <div className="flex flex-col items-center gap-3">
         <div className="relative w-10 h-10">
           <div className="absolute inset-0 rounded-full border-2 border-gray-200"></div>
-          <div className="absolute inset-0 rounded-full border-2 border-[#14b8a6] border-t-transparent animate-spin"></div>
+          <div className="absolute inset-0 rounded-full border-2 border-[var(--primary)] border-t-transparent animate-spin"></div>
         </div>
         <span className="text-sm text-gray-400">Loading...</span>
       </div>

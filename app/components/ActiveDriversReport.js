@@ -179,7 +179,7 @@ export default function ActiveDriversReport() {
                 })),
               ];
               const html = buildTableHtml(data, ['metric', 'value', 'detail'], { metric: 'Metric', value: 'Value', detail: 'Details' });
-              printReport('Active Drivers Report — Miles Ahead', html);
+              printReport('Active Drivers Report — Magic Track', html);
             }}
             className="flex items-center gap-1.5 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium text-gray-700"
             aria-label="Print report"

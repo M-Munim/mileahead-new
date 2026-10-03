@@ -142,7 +142,7 @@ export default function SignupPage() {
             Create your account
           </h1>
           <p className="mt-2 text-sm text-gray-500">
-            Join Miles Ahead and get started
+            Join Magic Track and get started
           </p>
         </div>
 

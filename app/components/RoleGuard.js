@@ -19,7 +19,7 @@ export default function RoleGuard({
   children, 
   allowedRoles = [], 
   fallback = null,
-  redirectTo = '/dashboard',
+  redirectTo = '/orders',
   showMessage = true 
 }) {
   const { role, loading, isLoggedIn } = useAuth();
@@ -91,7 +91,7 @@ export default function RoleGuard({
                 onClick={() => router.push(redirectTo)}
                 className="w-full py-3 px-4 bg-[var(--primary)] text-white rounded-lg hover:bg-[var(--primary-hover)] transition-colors font-medium"
               >
-                Go to Dashboard
+                Go to Car Wash Orders
               </button>
             </div>
           </div>

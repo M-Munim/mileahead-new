@@ -12,6 +12,14 @@ const nextConfig = {
       },
     ],
   },
+  // Client scope (initial stage): Car Wash Orders is the only module. The other
+  // modules' code is kept; their URLs point to /orders until they are re-enabled.
+  // To bring a module back, remove its entry here and add it to Sidebar.js.
+  redirects: async () =>
+    ['/dashboard', '/customers', '/booking', '/pricing', '/finance', '/technical-support'].flatMap((path) => [
+      { source: path, destination: '/orders', permanent: false },
+      { source: `${path}/:rest*`, destination: '/orders', permanent: false },
+    ]),
   headers: async () => [
     {
       source: '/(.*)',

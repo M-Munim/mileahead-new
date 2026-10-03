@@ -241,7 +241,7 @@ export default function FinanceManagement() {
   const handlePrintReport = () => {
     const data = allBookings.map(normalizeRide).filter(r => r.date);
     const html = buildTableHtml(data, financeExportColumns, financeExportHeaders);
-    printReport('Financial Report — Miles Ahead', html);
+    printReport('Financial Report — Magic Track', html);
   };
 
   const rides = useMemo(() => allBookings.map(normalizeRide).filter(r => r.date), [allBookings]);

@@ -3,9 +3,13 @@
 :root {
   --background: #f8fafc;
   --foreground: #171717;
-  --primary: #14b8a6;
-  --primary-hover: #0d9488;
-  --primary-dark: #0f766e;
+  /* Magic Track brand: orange on black */
+  --primary: #f57c00;
+  --primary-hover: #e06d00;
+  --primary-dark: #c25e00;
+  --primary-light: #fff4e6;
+  --brand-black: #0b0b0b;
+  --brand-black-soft: #1c1c1c;
   --radius: 3px;
 }
 
@@ -138,7 +142,7 @@ input:focus,
 select:focus,
 textarea:focus {
   outline: none;
-  box-shadow: 0 0 0 2px rgba(20, 184, 166, 0.15);
+  box-shadow: 0 0 0 2px rgba(245, 124, 0, 0.18);
   border-color: var(--primary) !important;
 }
 
@@ -181,7 +185,7 @@ label {
 }
 .file-upload-zone:hover {
   border-color: var(--primary);
-  background-color: #f0fdfa;
+  background-color: var(--primary-light);
 }
 
 /* ── Form footer (button row) ── */
@@ -220,8 +224,8 @@ label {
   100% { background-position: 200% 0; }
 }
 @keyframes pulseGlow {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(20, 184, 166, 0.3); }
-  50% { box-shadow: 0 0 0 8px rgba(20, 184, 166, 0); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245, 124, 0, 0.3); }
+  50% { box-shadow: 0 0 0 8px rgba(245, 124, 0, 0); }
 }
 
 .animate-fade-in {

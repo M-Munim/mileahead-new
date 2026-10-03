@@ -1,38 +1,16 @@
 'use client';
 
-import {
-  LayoutDashboard,
-  Users,
-  Tag,
-  Banknote,
-  Car,
-  MapPin,
-  MessageSquare,
-  Settings,
-  BarChart3,
-  Headphones,
-  Droplets,
-  X,
-  ChevronRight,
-} from 'lucide-react';
+import { Droplets, X, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect } from 'react';
 import NextImage from 'next/image';
-import img from "../../public/Group.png";
+import logo from "../../public/magic-track-logo.png";
 
+// Client scope (initial stage): Car Wash Orders is the only module.
+// More modules will be added back here as they are requested.
 const menuItems = [
-  { icon: LayoutDashboard, label: 'Dashboard', href: '/dashboard' },
-  { icon: Users, label: 'User Management', href: '/customers' },
   { icon: Droplets, label: 'Car Wash Orders', href: '/orders' },
-  { icon: Tag, label: 'Pricing & Fees Management', href: '/pricing' },
-  { icon: Banknote, label: 'Financial Reports', href: '/finance' },
-  { icon: Car, label: 'Fleet & Vehicle Management', href: '#' },
-  { icon: MapPin, label: 'Geographic & Service', href: '#' },
-  { icon: MessageSquare, label: 'Communication Center', href: '#' },
-  { icon: Settings, label: 'System Configuration', href: '#' },
-  { icon: BarChart3, label: 'Marketing & Growth Tools', href: '#' },
-  { icon: Headphones, label: 'Technical & Support', href: '/technical-support' },
 ];
 
 export default function Sidebar({ isOpen, toggleSidebar }) {
@@ -52,19 +30,22 @@ export default function Sidebar({ isOpen, toggleSidebar }) {
   return (
     <>
       <aside
-        className={`fixed top-0 left-0 h-screen bg-white z-50 transition-transform duration-300 ease-in-out border-r border-gray-200 ${
+        className={`fixed top-0 left-0 h-screen bg-[var(--brand-black)] z-50 transition-transform duration-300 ease-in-out border-r border-white/5 ${
           isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         } w-[280px] sm:w-[300px] lg:w-[252px]`}
       >
         <div className="flex flex-col h-full overflow-y-auto">
           {/* Header with Logo */}
-          <div className="flex items-center justify-between px-5 py-5 border-b border-gray-100">
-            <div className="flex items-center gap-2 flex-1">
-              <NextImage src={img} alt="Miles Ahead Logo" className="object-contain" />
-            </div>
+          <div className="relative flex items-center justify-center px-5 py-5 border-b border-white/10">
+            <NextImage
+              src={logo}
+              alt="Magic Track — Car Wash & Auto Care"
+              className="w-full max-w-[190px] h-auto object-contain"
+              priority
+            />
 
             <button
-              className="lg:hidden text-gray-400 hover:text-gray-700 p-2 hover:bg-gray-100 transition-colors shrink-0"
+              className="lg:hidden absolute top-3 right-3 text-gray-400 hover:text-white p-2 hover:bg-white/10 transition-colors shrink-0"
               onClick={toggleSidebar}
               aria-label="Close menu"
             >
@@ -75,39 +56,26 @@ export default function Sidebar({ isOpen, toggleSidebar }) {
           {/* Navigation */}
           <nav className="px-3 py-3 flex-1" aria-label="Main navigation">
             <div className="stagger-fade-in">
-              {menuItems.map((item, index) => {
-                const isActive = pathname === item.href ||
-                  (item.href === '/customers' && pathname.startsWith('/customers')) ||
-                  (item.href === '/booking' && pathname.startsWith('/booking')) ||
-                  (item.href === '/orders' && pathname.startsWith('/orders')) ||
-                  (item.href === '/pricing' && pathname.startsWith('/pricing')) ||
-                  (item.href === '/finance' && pathname.startsWith('/finance')) ||
-                  (item.href === '/technical-support' && pathname.startsWith('/technical-support'));
-                const isDisabled = item.href === '#';
+              {menuItems.map((item) => {
+                const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
                 return (
                   <Link
-                    key={index}
+                    key={item.href}
                     href={item.href}
                     aria-current={isActive ? 'page' : undefined}
                     className={`group w-full flex items-center gap-3 px-3 py-2.5 mb-0.5 text-sm transition-all duration-200 ${
                       isActive
                         ? 'bg-[var(--primary)] text-white font-medium shadow-sm'
-                        : isDisabled
-                        ? 'text-gray-400 cursor-default'
-                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                        : 'text-gray-300 hover:bg-white/5 hover:text-white'
                     }`}
-                    onClick={(e) => {
-                      if (isDisabled) {
-                        e.preventDefault();
-                        return;
-                      }
+                    onClick={() => {
                       if (window.innerWidth < 1024) {
                         toggleSidebar();
                       }
                     }}
                   >
                     <item.icon className={`w-[18px] h-[18px] shrink-0 transition-colors duration-200 ${
-                      isActive ? 'text-white' : isDisabled ? 'text-gray-300' : 'text-gray-400 group-hover:text-[var(--primary)]'
+                      isActive ? 'text-white' : 'text-gray-500 group-hover:text-[var(--primary)]'
                     }`} aria-hidden="true" />
                     <span className="text-left text-[13px] leading-tight flex-1">{item.label}</span>
                     {isActive && (
@@ -120,9 +88,9 @@ export default function Sidebar({ isOpen, toggleSidebar }) {
           </nav>
 
           {/* Footer */}
-          <div className="px-4 py-3 border-t border-gray-100">
-            <div className="text-[11px] text-gray-400 text-center">
-              Miles Ahead v1.0
+          <div className="px-4 py-3 border-t border-white/10">
+            <div className="text-[11px] text-gray-500 text-center">
+              Magic Track v1.0
             </div>
           </div>
         </div>

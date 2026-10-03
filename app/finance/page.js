@@ -190,7 +190,7 @@ export default function FinancePage() {
   };
 
   const handlePrint = () => {
-    printReport(`${reportTitle} — Miles Ahead`, buildTableHtml(summaryRowsForExport(), summaryColumns, summaryHeaders));
+    printReport(`${reportTitle} — Magic Track`, buildTableHtml(summaryRowsForExport(), summaryColumns, summaryHeaders));
   };
 
   return (

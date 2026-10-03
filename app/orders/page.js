@@ -3,12 +3,13 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Search, Phone, X, MapPin, Clock, Droplets, CheckCircle,
-  RotateCcw, ClipboardList, Copy, ExternalLink, Send, Trash2, MessageCircle,
+  RotateCcw, ClipboardList, Copy, ExternalLink, Send, Trash2, MessageCircle, Plus,
 } from 'lucide-react';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import Toast from '../components/Toast';
 import ConfirmationDialog from '../components/ConfirmationDialog';
+import NewOrderModal from '../components/NewOrderModal';
 import { useAuth } from '../contexts/AuthContext';
 import { bookingService } from '../../utils/axiosInstance';
 import { extractArray } from '../../utils/extractArray';
@@ -17,14 +18,14 @@ import { getMapsUrl, copyText, getWhatsAppUrl } from '../../utils/location';
 // ─────────────────────────────────────────────────────────────
 // Order lifecycle model
 // ─────────────────────────────────────────────────────────────
-const STATUS_FLOW = ['pending', 'confirmed', 'enroute', 'arrived', 'completed'];
+// Client scope: three statuses only. Bookings the backend still reports as
+// "En Route" / "Arrived" are shown as Confirmed (in progress, not done yet).
+const STATUS_FLOW = ['pending', 'confirmed', 'completed'];
 
 // Status pill colors follow the app's existing palette (see RidesManagement.js).
 const STATUS_META = {
   pending:   { label: 'Pending Confirmation', pill: 'bg-yellow-100 text-yellow-700' },
   confirmed: { label: 'Confirmed',            pill: 'bg-blue-100 text-blue-700' },
-  enroute:   { label: 'Cleaner En Route',     pill: 'bg-purple-100 text-purple-700' },
-  arrived:   { label: 'Cleaner Arrived',      pill: 'bg-teal-100 text-teal-700' },
   completed: { label: 'Completed',            pill: 'bg-green-100 text-green-700' },
 };
 
@@ -38,15 +39,11 @@ const TONE = {
 // What the admin taps next for each status (one tap advances the order).
 const NEXT_ACTION = {
   pending:   { next: 'confirmed', row: 'Confirm',        full: 'Confirm Order',     tone: 'primary' },
-  confirmed: { next: 'enroute',   row: 'Mark En Route',  full: 'Mark En Route',     tone: 'primary', notification: 'Cleaner is on the way' },
-  enroute:   { next: 'arrived',   row: 'Mark Arrived',   full: 'Mark as Arrived',   tone: 'primary', notification: 'Cleaner is arrived' },
-  arrived:   { next: 'completed', row: 'Mark Completed', full: 'Mark as Completed', tone: 'green',   notification: 'Job completed' },
+  confirmed: { next: 'completed', row: 'Mark Completed', full: 'Mark as Completed', tone: 'green', notification: 'Job completed' },
 };
 
 const STATUS_API_VALUE = {
   confirmed: 'confirmed',
-  enroute: 'En Route',
-  arrived: 'arrived',
   completed: 'completed',
 };
 
@@ -55,8 +52,6 @@ const TABS = [
   { key: 'all',       label: 'All' },
   { key: 'pending',   label: 'Pending' },
   { key: 'confirmed', label: 'Confirmed' },
-  { key: 'enroute',   label: 'En Route' },
-  { key: 'arrived',   label: 'Arrived' },
   { key: 'completed', label: 'Completed' },
 ];
 
@@ -69,25 +64,21 @@ const SAMPLE_ORDERS = [
   { id: 'CW-1045', customer: { name: 'Omar F.', phone: '+974 6633 1188' }, package: 'Premium Detail', addOn: '—', vehicle: 'SUV', numberPlate: 'QAR 5678', location: 'Lusail Marina', time: 'Today, 5:30 PM', bookedAt: 'Today · 1:05 PM', total: 90, status: 'pending', cleaner: null, history: {} },
   { id: 'CW-1046', customer: { name: 'Aisha M.', phone: '+974 5599 2277' }, package: 'Quick Shine', addOn: '—', vehicle: 'Hatchback', numberPlate: 'QAR 9012', location: 'Al Sadd', time: 'Today, 6:00 PM', bookedAt: 'Today · 1:20 PM', total: 40, status: 'pending', cleaner: null, history: {} },
 
-  // Confirmed (4)
+  // Confirmed (7)
   { id: 'CW-1041', customer: { name: 'Mohammed A.', phone: '+974 3344 5566' }, package: 'Premium Detail', addOn: '—', vehicle: 'SUV', numberPlate: 'QAR 3456', location: 'Villa 22, West Bay', time: 'Today, 3:30 PM', bookedAt: 'Today · 11:50 AM', total: 90, status: 'confirmed', cleaner: { name: 'Rajesh (Cleaner)', phone: '+974 3311 9900' }, history: { confirmed: '2:10 PM' } },
   { id: 'CW-1040', customer: { name: 'Noor S.', phone: '+974 5544 8822' }, package: 'Classic Care', addOn: '—', vehicle: 'Sedan', numberPlate: 'QAR 7890', location: 'Al Gharrafa', time: 'Today, 3:00 PM', bookedAt: 'Today · 11:30 AM', total: 55, status: 'confirmed', cleaner: { name: 'Mahesh (Cleaner)', phone: '+974 3300 1122' }, history: { confirmed: '1:50 PM' } },
+  { id: 'CW-1039', customer: { name: 'Sara K.', phone: '+974 7788 9900' }, package: 'Quick Shine', addOn: 'Hygiene Plus', vehicle: '4x4 / Pickup', numberPlate: 'QAR 4567', location: 'The Pearl, Zone 66', time: 'Today, 2:15 PM', bookedAt: 'Today · 12:40 PM', total: 70, status: 'confirmed', cleaner: { name: 'Mahesh (Cleaner)', phone: '+974 3300 1122' }, history: { confirmed: '12:45 PM' } },
   { id: 'CW-1038', customer: { name: 'Khalid B.', phone: '+974 6677 3344' }, package: 'Quick Shine + Hygiene', addOn: 'Hygiene Plus', vehicle: '4x4', numberPlate: 'QAR 2345', location: 'The Pearl', time: 'Today, 2:45 PM', bookedAt: 'Today · 11:10 AM', total: 70, status: 'confirmed', cleaner: { name: 'Suresh (Cleaner)', phone: '+974 3322 7788' }, history: { confirmed: '1:30 PM' } },
+  { id: 'CW-1037', customer: { name: 'Yusuf R.', phone: '+974 6611 4477' }, package: 'Classic Care', addOn: '—', vehicle: 'Van', numberPlate: 'QAR 0123', location: 'Al Sadd', time: 'Today, 1:00 PM', bookedAt: 'Today · 10:30 AM', total: 65, status: 'confirmed', cleaner: { name: 'Suresh (Cleaner)', phone: '+974 3322 7788' }, history: { confirmed: '11:45 AM' } },
   { id: 'CW-1036', customer: { name: 'Hind A.', phone: '+974 5522 6611' }, package: 'Classic Care', addOn: '—', vehicle: 'Van', numberPlate: 'QAR 6789', location: 'Al Wakrah', time: 'Today, 2:30 PM', bookedAt: 'Today · 10:55 AM', total: 65, status: 'confirmed', cleaner: { name: 'Rajesh (Cleaner)', phone: '+974 3311 9900' }, history: { confirmed: '1:15 PM' } },
-
-  // En Route (2)
-  { id: 'CW-1039', customer: { name: 'Sara K.', phone: '+974 7788 9900' }, package: 'Quick Shine', addOn: 'Hygiene Plus', vehicle: '4x4 / Pickup', numberPlate: 'QAR 4567', location: 'The Pearl, Zone 66', time: 'Today, 2:15 PM', bookedAt: 'Today · 12:40 PM', total: 70, status: 'enroute', cleaner: { name: 'Mahesh (Cleaner)', phone: '+974 3300 1122' }, history: { confirmed: '12:45 PM', enroute: '1:55 PM' } },
-  { id: 'CW-1035', customer: { name: 'Fahad Q.', phone: '+974 6611 2200' }, package: 'Premium Detail', addOn: '—', vehicle: 'SUV', numberPlate: 'QAR 8901', location: 'West Bay', time: 'Today, 1:45 PM', bookedAt: 'Today · 11:00 AM', total: 90, status: 'enroute', cleaner: { name: 'Suresh (Cleaner)', phone: '+974 3322 7788' }, history: { confirmed: '12:30 PM', enroute: '1:20 PM' } },
-
-  // Arrived (1)
-  { id: 'CW-1037', customer: { name: 'Yusuf R.', phone: '+974 6611 4477' }, package: 'Classic Care', addOn: '—', vehicle: 'Van', numberPlate: 'QAR 0123', location: 'Al Sadd', time: 'Today, 1:00 PM', bookedAt: 'Today · 10:30 AM', total: 65, status: 'arrived', cleaner: { name: 'Suresh (Cleaner)', phone: '+974 3322 7788' }, history: { confirmed: '11:45 AM', enroute: '12:30 PM', arrived: '12:55 PM' } },
+  { id: 'CW-1035', customer: { name: 'Fahad Q.', phone: '+974 6611 2200' }, package: 'Premium Detail', addOn: '—', vehicle: 'SUV', numberPlate: 'QAR 8901', location: 'West Bay', time: 'Today, 1:45 PM', bookedAt: 'Today · 11:00 AM', total: 90, status: 'confirmed', cleaner: { name: 'Suresh (Cleaner)', phone: '+974 3322 7788' }, history: { confirmed: '12:30 PM' } },
 
   // Completed (5)
-  { id: 'CW-0981', customer: { name: 'Layla H.', phone: '+974 5522 3311' }, package: 'Quick Shine', addOn: '—', vehicle: 'SUV', numberPlate: 'QAR 1357', location: 'Villa 22, West Bay', time: 'Sat, 12 Jul', bookedAt: 'Sat, 12 Jul · 9:10 AM', total: 60, status: 'completed', cleaner: { name: 'Mahesh (Cleaner)', phone: '+974 3300 1122' }, history: { confirmed: '9:20 AM', enroute: '9:55 AM', arrived: '10:15 AM', completed: '10:50 AM' } },
-  { id: 'CW-0980', customer: { name: 'Ahmed T.', phone: '+974 3300 7766' }, package: 'Premium Detail', addOn: '—', vehicle: 'Sedan', numberPlate: 'QAR 2468', location: 'Al Waab St', time: 'Sat, 12 Jul', bookedAt: 'Sat, 12 Jul · 8:40 AM', total: 85, status: 'completed', cleaner: { name: 'Rajesh (Cleaner)', phone: '+974 3311 9900' }, history: { confirmed: '8:50 AM', enroute: '9:20 AM', arrived: '9:40 AM', completed: '10:25 AM' } },
-  { id: 'CW-0979', customer: { name: 'Mariam D.', phone: '+974 5511 8899' }, package: 'Classic Care', addOn: '—', vehicle: '4x4', numberPlate: 'QAR 3691', location: 'Lusail', time: 'Fri, 11 Jul', bookedAt: 'Fri, 11 Jul · 3:15 PM', total: 60, status: 'completed', cleaner: { name: 'Suresh (Cleaner)', phone: '+974 3322 7788' }, history: { confirmed: '3:25 PM', enroute: '3:55 PM', arrived: '4:10 PM', completed: '4:45 PM' } },
-  { id: 'CW-0978', customer: { name: 'Ali H.', phone: '+974 6600 5511' }, package: 'Quick Shine + Hygiene', addOn: 'Hygiene Plus', vehicle: 'SUV', numberPlate: 'QAR 4820', location: 'The Pearl', time: 'Fri, 11 Jul', bookedAt: 'Fri, 11 Jul · 1:00 PM', total: 70, status: 'completed', cleaner: { name: 'Mahesh (Cleaner)', phone: '+974 3300 1122' }, history: { confirmed: '1:10 PM', enroute: '1:40 PM', arrived: '2:00 PM', completed: '2:40 PM' } },
-  { id: 'CW-0977', customer: { name: 'Reem N.', phone: '+974 5533 2244' }, package: 'Classic Care', addOn: '—', vehicle: 'Sedan', numberPlate: 'QAR 5931', location: 'Al Sadd', time: 'Thu, 10 Jul', bookedAt: 'Thu, 10 Jul · 11:20 AM', total: 55, status: 'completed', cleaner: { name: 'Rajesh (Cleaner)', phone: '+974 3311 9900' }, history: { confirmed: '11:30 AM', enroute: '12:00 PM', arrived: '12:20 PM', completed: '12:55 PM' } },
+  { id: 'CW-0981', customer: { name: 'Layla H.', phone: '+974 5522 3311' }, package: 'Quick Shine', addOn: '—', vehicle: 'SUV', numberPlate: 'QAR 1357', location: 'Villa 22, West Bay', time: 'Sat, 12 Jul', bookedAt: 'Sat, 12 Jul · 9:10 AM', total: 60, status: 'completed', cleaner: { name: 'Mahesh (Cleaner)', phone: '+974 3300 1122' }, history: { confirmed: '9:20 AM', completed: '10:50 AM' } },
+  { id: 'CW-0980', customer: { name: 'Ahmed T.', phone: '+974 3300 7766' }, package: 'Premium Detail', addOn: '—', vehicle: 'Sedan', numberPlate: 'QAR 2468', location: 'Al Waab St', time: 'Sat, 12 Jul', bookedAt: 'Sat, 12 Jul · 8:40 AM', total: 85, status: 'completed', cleaner: { name: 'Rajesh (Cleaner)', phone: '+974 3311 9900' }, history: { confirmed: '8:50 AM', completed: '10:25 AM' } },
+  { id: 'CW-0979', customer: { name: 'Mariam D.', phone: '+974 5511 8899' }, package: 'Classic Care', addOn: '—', vehicle: '4x4', numberPlate: 'QAR 3691', location: 'Lusail', time: 'Fri, 11 Jul', bookedAt: 'Fri, 11 Jul · 3:15 PM', total: 60, status: 'completed', cleaner: { name: 'Suresh (Cleaner)', phone: '+974 3322 7788' }, history: { confirmed: '3:25 PM', completed: '4:45 PM' } },
+  { id: 'CW-0978', customer: { name: 'Ali H.', phone: '+974 6600 5511' }, package: 'Quick Shine + Hygiene', addOn: 'Hygiene Plus', vehicle: 'SUV', numberPlate: 'QAR 4820', location: 'The Pearl', time: 'Fri, 11 Jul', bookedAt: 'Fri, 11 Jul · 1:00 PM', total: 70, status: 'completed', cleaner: { name: 'Mahesh (Cleaner)', phone: '+974 3300 1122' }, history: { confirmed: '1:10 PM', completed: '2:40 PM' } },
+  { id: 'CW-0977', customer: { name: 'Reem N.', phone: '+974 5533 2244' }, package: 'Classic Care', addOn: '—', vehicle: 'Sedan', numberPlate: 'QAR 5931', location: 'Al Sadd', time: 'Thu, 10 Jul', bookedAt: 'Thu, 10 Jul · 11:20 AM', total: 55, status: 'completed', cleaner: { name: 'Rajesh (Cleaner)', phone: '+974 3311 9900' }, history: { confirmed: '11:30 AM', completed: '12:55 PM' } },
 ];
 
 const getInitial = (name) => (name?.trim()?.[0] || '?').toUpperCase();
@@ -98,8 +89,8 @@ const timeNow = () =>
 const normalizeStatus = (status) => {
   const key = String(status || '').toLowerCase().replace(/[\s_-]/g, '');
   if (key.includes('complete')) return 'completed';
-  if (key.includes('arrive')) return 'arrived';
-  if (key.includes('enroute') || key.includes('onroute') || key.includes('ontheway')) return 'enroute';
+  // En Route / Arrived are no longer separate steps — the job is still in progress.
+  if (key.includes('arrive') || key.includes('enroute') || key.includes('onroute') || key.includes('ontheway')) return 'confirmed';
   if (key.includes('confirm') || key.includes('accept') || key.includes('schedule')) return 'confirmed';
   return 'pending';
 };
@@ -121,8 +112,6 @@ const mapCarWashBooking = (booking) => {
   const cleanerPhone = booking.cleaner_phone || booking.driver_phone || booking.chauffeur_phone;
   const history = {
     confirmed: formatHistoryTime(booking.confirmed_at || booking.confirmedAt),
-    enroute: formatHistoryTime(booking.enroute_at || booking.en_route_at || booking.enrouteAt),
-    arrived: formatHistoryTime(booking.arrived_at || booking.arrivedAt),
     completed: formatHistoryTime(booking.completed_at || booking.completedAt),
   };
 
@@ -159,6 +148,61 @@ const mapCarWashBooking = (booking) => {
   };
 };
 
+/**
+ * Manual order → "create booking CAR WASH" request (Postman collection).
+ * Multipart form data, same keys the customer app sends.
+ */
+const buildCreateOrderFormData = (values) => {
+  const fields = {
+    status: 'pending',
+    Service: 'car wash', // backend filter key is case-sensitive
+    passenger_name: values.customerName,
+    contact_number: values.phone,
+    sub_Service: values.packageName,
+    package: values.packageName,
+    package_price: values.packagePrice,
+    car_name: values.vehicle,
+    vehicle_price: values.vehiclePrice,
+    add_ons: values.addOn,
+    add_ons_price: values.addOnPrice,
+    car_number: values.numberPlate,
+    from_address: values.location,
+    date: values.date,
+    time: values.time,
+    date_time: `${values.date} ${values.time}`,
+    price: values.total,
+    payment_channel: values.payment,
+    payment_method: values.payment,
+    special_instructions: values.notes,
+  };
+  const fd = new FormData();
+  // Leave out empty optional fields rather than sending "" for a price/plate.
+  Object.entries(fields).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === '') return;
+    fd.append(key, String(value));
+  });
+  return fd;
+};
+
+/** Same shape as a mapped API order — used when the list is in demo mode. */
+const buildLocalOrder = (values) => ({
+  id: `CW-${String(Date.now()).slice(-6)}`,
+  customer: { name: values.customerName, phone: values.phone },
+  package: values.packageName,
+  addOn: values.addOn || '—',
+  vehicle: values.vehicle,
+  numberPlate: values.numberPlate,
+  location: values.location,
+  notes: values.notes,
+  payment: values.payment,
+  time: formatDateTime(values.date, values.time),
+  bookedAt: `Today · ${timeNow()}`,
+  total: values.total,
+  status: 'pending',
+  cleaner: null,
+  history: {},
+});
+
 const orderMapsUrl = (order) =>
   getMapsUrl({ lat: order.lat, lng: order.lng, address: order.location });
 
@@ -174,7 +218,7 @@ const hasValue = (v) => v && v !== '—' && v !== 'N/A';
 const buildCleanerMessage = (order) => {
   const url = orderMapsUrl(order);
   const lines = [
-    `*Miles Ahead — Car Wash Job #${order.id}*`,
+    `*Magic Track — Car Wash Job #${order.id}*`,
     '',
     `Date & Time: ${order.time}`,
     `Service: ${order.package}`,
@@ -263,8 +307,6 @@ function OrderDrawer({ order, onClose, onAdvance, onCopyLocation, onCopyMessage,
 
   const steps = [
     { key: 'confirmed', label: 'Confirmed' },
-    { key: 'enroute',   label: 'Cleaner En Route' },
-    { key: 'arrived',   label: 'Cleaner Arrived' },
     { key: 'completed', label: 'Service Completed' },
   ];
 
@@ -380,7 +422,7 @@ function OrderDrawer({ order, onClose, onAdvance, onCopyLocation, onCopyMessage,
           <div className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold mt-4 mb-1">Order Progress</div>
           <div className="mt-1">
             {steps.map((step, i) => {
-              const stepIndex = i + 1; // confirmed=1 … completed=4 in STATUS_FLOW
+              const stepIndex = i + 1; // confirmed=1, completed=2 in STATUS_FLOW
               const done = flowIndex >= stepIndex;
               const now = flowIndex === stepIndex;
               const ts = order.history?.[step.key];
@@ -448,9 +490,7 @@ function OrderDrawer({ order, onClose, onAdvance, onCopyLocation, onCopyMessage,
                 onClick={() => onAdvance(order)}
                 className={`w-full py-3 text-[13px] font-semibold flex items-center justify-center gap-2 transition-colors ${TONE[action.tone]}`}
               >
-                {action.tone === 'green'
-                  ? <CheckCircle className="w-4 h-4" aria-hidden="true" />
-                  : <MapPin className="w-4 h-4" aria-hidden="true" />}
+                <CheckCircle className="w-4 h-4" aria-hidden="true" />
                 {action.full}
               </button>
               {action.notification && (
@@ -491,10 +531,13 @@ export default function OrdersPage() {
   const [checkedIds, setCheckedIds] = useState(() => new Set());
   const [pendingDelete, setPendingDelete] = useState(null); // orders awaiting confirmation
   const [deleting, setDeleting] = useState(false);
+  const [showNewOrder, setShowNewOrder] = useState(false);
   const { hasPermission } = useAuth();
   const canDelete = hasPermission('canDeleteRecords');
+  const canCreate = hasPermission('canManageBookings');
 
   const toggleSidebar = useCallback(() => setSidebarOpen((v) => !v), []);
+  const closeNewOrder = useCallback(() => setShowNewOrder(false), []);
 
 const fetchCarWashOrders = useCallback(async () => {
     try {
@@ -643,6 +686,30 @@ const fetchCarWashOrders = useCallback(async () => {
     }
   }, [pendingDelete, canDelete, ordersError, selectedId]);
 
+  // Manual entry. Throws on API failure so the modal keeps the form and shows why.
+  const handleCreateOrder = useCallback(async (values) => {
+    if (ordersError) {
+      // Demo mode (API unreachable): keep it on screen only, and say so.
+      const localOrder = buildLocalOrder(values);
+      setOrders((prev) => [localOrder, ...prev]);
+      setShowNewOrder(false);
+      setActiveTab('all');
+      setQuery('');
+      setToast({ message: `Demo mode — order #${localOrder.id} added on this screen only, not saved to the server.`, type: 'warning' });
+      return;
+    }
+
+    await bookingService.createBooking(buildCreateOrderFormData(values), {
+      // Let the browser set multipart/form-data with its boundary.
+      headers: { 'Content-Type': undefined },
+    });
+    setShowNewOrder(false);
+    setActiveTab('all');
+    setQuery('');
+    setToast({ message: `Order for ${values.customerName} created`, type: 'success' });
+    fetchCarWashOrders();
+  }, [ordersError, fetchCarWashOrders]);
+
   const resetOrdersView = useCallback(() => {
     setActiveTab('all');
     setQuery('');
@@ -734,8 +801,8 @@ const fetchCarWashOrders = useCallback(async () => {
                     <p className="text-xs text-gray-500">Manage bookings and update status as cleaners report in</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <div className="relative">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="relative flex-1 min-w-[180px] sm:flex-none">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" aria-hidden="true" />
                     <input
                       type="text"
@@ -754,6 +821,14 @@ const fetchCarWashOrders = useCallback(async () => {
                   >
                     <RotateCcw className="w-3.5 h-3.5" aria-hidden="true" /> Reset
                   </button>
+                  {canCreate && (
+                    <button
+                      onClick={() => setShowNewOrder(true)}
+                      className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-colors whitespace-nowrap ${TONE.primary}`}
+                    >
+                      <Plus className="w-4 h-4" aria-hidden="true" /> New Order
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -941,6 +1016,10 @@ const fetchCarWashOrders = useCallback(async () => {
           canDelete={canDelete}
           onDelete={setPendingDelete}
         />
+      )}
+
+      {showNewOrder && (
+        <NewOrderModal onClose={closeNewOrder} onSubmit={handleCreateOrder} />
       )}
 
       <ConfirmationDialog

@@ -6,7 +6,9 @@ import Toast from '../../components/Toast';
 import { driverService } from '../../../utils/axiosInstance';
 import { useAuth, ROLES, ROLE_NAMES, isDashboardRole } from '../../contexts/AuthContext';
 import Link from "next/link";
+import NextImage from 'next/image';
 import { Shield, UserCog } from 'lucide-react';
+import emblem from '../../../public/magic-track-emblem.png';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -23,18 +25,18 @@ export default function LoginPage() {
   const roleConfig = {
     [ROLES.ADMIN]: {
       icon: Shield,
-      color: 'from-purple-500 to-purple-600',
-      bgColor: 'bg-purple-50',
-      borderColor: 'border-purple-500',
-      textColor: 'text-purple-700',
+      color: 'from-[var(--primary)] to-[var(--primary-dark)]',
+      bgColor: 'bg-orange-50',
+      borderColor: 'border-[var(--primary)]',
+      textColor: 'text-orange-800',
       description: 'Admin account'
     },
     [ROLES.MANAGER]: {
       icon: UserCog,
-      color: 'from-blue-500 to-blue-600',
-      bgColor: 'bg-blue-50',
-      borderColor: 'border-blue-500',
-      textColor: 'text-blue-700',
+      color: 'from-neutral-700 to-neutral-900',
+      bgColor: 'bg-gray-50',
+      borderColor: 'border-neutral-800',
+      textColor: 'text-neutral-900',
       description: 'Manager account'
     }
   };
@@ -106,7 +108,7 @@ export default function LoginPage() {
       });
 
       setTimeout(() => {
-        router.push('/dashboard');
+        router.push('/orders');
       }, 800);
     } catch (error) {
       setToast({
@@ -123,11 +125,14 @@ export default function LoginPage() {
       <div className="max-w-2xl w-full space-y-6 animate-fade-in-up">
         {/* Header */}
         <div className="text-center">
-          <div className="mx-auto h-14 w-14 bg-gradient-to-br from-[var(--primary)] to-[var(--primary-dark)] rounded-full flex items-center justify-center mb-4 shadow-lg">
-            <Shield className="h-7 w-7 text-white" aria-hidden="true" />
-          </div>
+          <NextImage
+            src={emblem}
+            alt="Magic Track — Car Wash & Auto Care"
+            className="mx-auto w-40 h-40 rounded-full mb-4 shadow-lg"
+            priority
+          />
           <h1 className="text-2xl font-bold text-gray-900">
-            Sign in to Miles Ahead
+            Sign in to Magic Track
           </h1>
           <p className="mt-2 text-sm text-gray-500">
             Select your role and enter your credentials
