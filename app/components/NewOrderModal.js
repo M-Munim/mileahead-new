@@ -2,25 +2,37 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { Loader, X, User, Droplets, MapPin, CreditCard, AlertCircle } from 'lucide-react';
-import { packageService, vehicleService, addonService } from '../../utils/axiosInstance';
-import { extractArray } from '../../utils/extractArray';
 import { useFocusTrap } from '@/app/hooks/useFocusTrap';
 
 /**
  * Manual car wash order entry — for walk-in / phone customers that an Admin or
- * Manager books on their behalf. Packages, vehicle types and add-ons come from
- * the same pricing endpoints as the Pricing module, so the suggested total
- * matches what the app would charge. The total stays editable.
+ * Manager books on their behalf. Dummy data only (client request): the price
+ * lists below are fixed and nothing is sent to the API. The total is suggested
+ * from them and stays editable.
  *
- * The modal only collects and validates. `onSubmit(values)` does the saving and
- * should throw on failure — the error is shown here and the form is kept.
+ * The modal only collects and validates. `onSubmit(values)` adds the order.
  */
 
-const OPTION_SOURCES = [
-  { key: 'packages', service: packageService, name: (r) => r.package_name || r.name },
-  { key: 'vehicles', service: vehicleService, name: (r) => r.vehicle_name || r.name },
-  { key: 'addons',   service: addonService,   name: (r) => r.name || r.addon_name },
-];
+// Dummy price lists (QAR): package + vehicle surcharge + add-on.
+const OPTIONS = {
+  packages: [
+    { name: 'Quick Shine', price: 35 },
+    { name: 'Classic Care', price: 50 },
+    { name: 'Premium Detail', price: 80 },
+  ],
+  vehicles: [
+    { name: 'Hatchback', price: 0 },
+    { name: 'Sedan', price: 5 },
+    { name: 'SUV', price: 10 },
+    { name: '4x4 / Pickup', price: 15 },
+    { name: 'Van', price: 15 },
+  ],
+  addons: [
+    { name: 'Hygiene Plus', price: 20 },
+    { name: 'Interior Vacuum', price: 15 },
+    { name: 'Engine Bay Clean', price: 25 },
+  ],
+};
 
 const EMPTY_FORM = {
   customerName: '',
@@ -35,12 +47,6 @@ const EMPTY_FORM = {
   payment: 'cash',
   notes: '',
   total: '',
-};
-
-/** The API sends prices as strings ("35.00"). */
-const toPrice = (value) => {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : 0;
 };
 
 /** Today as YYYY-MM-DD in the user's local time zone. */
@@ -75,29 +81,7 @@ export default function NewOrderModal({ onClose, onSubmit }) {
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
   const [submitError, setSubmitError] = useState('');
-  const [options, setOptions] = useState({ packages: [], vehicles: [], addons: [] });
-  const [optionsLoading, setOptionsLoading] = useState(true);
-
-  // Load packages / vehicle types / add-ons. Any list that fails or comes back
-  // empty falls back to a free-text field so an order can always be entered.
-  useEffect(() => {
-    let cancelled = false;
-    Promise.allSettled(OPTION_SOURCES.map((s) => s.service.getAll())).then((results) => {
-      if (cancelled) return;
-      const next = {};
-      OPTION_SOURCES.forEach((source, i) => {
-        const result = results[i];
-        next[source.key] = result.status === 'fulfilled'
-          ? extractArray(result.value)
-              .map((row) => ({ id: row.id, name: String(source.name(row) || '').trim(), price: toPrice(row.price) }))
-              .filter((o) => o.name)
-          : [];
-      });
-      setOptions(next);
-      setOptionsLoading(false);
-    });
-    return () => { cancelled = true; };
-  }, []);
+  const options = OPTIONS;
 
   // Close on Escape is handled by useFocusTrap; lock page scroll while open.
   useEffect(() => {
@@ -190,11 +174,8 @@ export default function NewOrderModal({ onClose, onSubmit }) {
     'aria-describedby': errors[name] ? `new-order-${name}-error` : undefined,
   });
 
-  /** A select when the API gave us a list, otherwise a plain text field. */
+  /** A select for the price list, or a plain text field if the list is empty. */
   const renderChoice = (name, list, placeholder, { optional = false } = {}) => {
-    if (optionsLoading) {
-      return <input {...fieldProps(name)} disabled placeholder="Loading…" />;
-    }
     if (list.length === 0) {
       return <input {...fieldProps(name)} placeholder={placeholder} />;
     }

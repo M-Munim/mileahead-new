@@ -19,7 +19,10 @@ const nextConfig = {
     ['/dashboard', '/customers', '/booking', '/pricing', '/finance', '/technical-support'].flatMap((path) => [
       { source: path, destination: '/orders', permanent: false },
       { source: `${path}/:rest*`, destination: '/orders', permanent: false },
-    ]),
+    ]).concat(
+      // Demo login only — no account sign-up at this stage.
+      { source: '/auth/signup', destination: '/auth/login', permanent: false },
+    ),
   headers: async () => [
     {
       source: '/(.*)',

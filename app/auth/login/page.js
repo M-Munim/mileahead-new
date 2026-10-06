@@ -3,12 +3,21 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Toast from '../../components/Toast';
-import { driverService } from '../../../utils/axiosInstance';
-import { useAuth, ROLES, ROLE_NAMES, isDashboardRole } from '../../contexts/AuthContext';
-import Link from "next/link";
+import { useAuth, ROLES, ROLE_NAMES } from '../../contexts/AuthContext';
 import NextImage from 'next/image';
 import { Shield, UserCog } from 'lucide-react';
 import emblem from '../../../public/magic-track-emblem.png';
+
+// Demo login (client request: no server access at this stage). The account,
+// not the role card, decides the role.
+const DEMO_ACCOUNTS = [
+  { username: 'admin', email: 'admin@magictrack.qa', password: 'magic123', role: ROLES.ADMIN },
+  { username: 'manager', email: 'manager@magictrack.qa', password: 'magic123', role: ROLES.MANAGER },
+];
+
+/** JWT-shaped token with no expiry, so AuthContext keeps the session on reload. */
+const demoToken = (account) =>
+  `demo.${btoa(JSON.stringify({ sub: account.username, role: account.role, demo: true }))}.demo`;
 
 export default function LoginPage() {
   const router = useRouter();
@@ -70,54 +79,22 @@ export default function LoginPage() {
 
     setLoading(true);
 
-    try {
-      const loginData = {
-        identifier: formData.identifier.trim(),
-        password: formData.password
-      };
+    const identifier = formData.identifier.trim().toLowerCase();
+    const account = DEMO_ACCOUNTS.find(
+      (acc) => (acc.username === identifier || acc.email === identifier) && acc.password === formData.password
+    );
 
-      const response = await driverService.login(loginData);
-
-      // The account's real role comes from the server. The card the user picked
-      // is presentational only and must never grant privilege: if the API omits
-      // the role we fall back to Manager (least privilege), never to Admin.
-      const accountRole = response.data.user?.role || ROLES.MANAGER;
-
-      // Driver accounts (chauffeurs / pddriver) have no access to this panel.
-      if (!isDashboardRole(accountRole)) {
-        setToast({
-          message: 'This account does not have dashboard access. Please sign in with an Admin or Manager account.',
-          type: 'error'
-        });
-        return;
-      }
-
-      if (response.data.token) {
-        const userData = {
-          username: response.data.user?.username || formData.identifier,
-          email: response.data.user?.email || response.data.email || formData.identifier,
-          role: accountRole
-        };
-
-        login(response.data.token, userData, accountRole);
-      }
-
-      setToast({
-        message: `Login successful as ${ROLE_NAMES[accountRole]}!`,
-        type: 'success'
-      });
-
-      setTimeout(() => {
-        router.push('/orders');
-      }, 800);
-    } catch (error) {
-      setToast({
-        message: error.message || 'Login failed. Please try again.',
-        type: 'error'
-      });
-    } finally {
+    if (!account) {
       setLoading(false);
+      setToast({ message: 'Invalid username or password.', type: 'error' });
+      return;
     }
+
+    login(demoToken(account), { username: account.username, email: account.email, role: account.role }, account.role);
+    setToast({ message: `Login successful as ${ROLE_NAMES[account.role]}!`, type: 'success' });
+    setTimeout(() => {
+      router.push('/orders');
+    }, 800);
   };
 
   return (
@@ -289,15 +266,6 @@ export default function LoginPage() {
             </div>
           </form>
 
-          {/* Sign Up Link */}
-          <div className="mt-6 text-center">
-            <p className="text-sm text-gray-600">
-              Don&apos;t have an account?{' '}
-              <Link href="/auth/signup" className="font-medium text-[var(--primary)] hover:text-[var(--primary-hover)]">
-                Sign up
-              </Link>
-            </p>
-          </div>
         </div>
 
         {/* Role Info */}

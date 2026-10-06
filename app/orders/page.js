@@ -11,8 +11,6 @@ import Toast from '../components/Toast';
 import ConfirmationDialog from '../components/ConfirmationDialog';
 import NewOrderModal from '../components/NewOrderModal';
 import { useAuth } from '../contexts/AuthContext';
-import { bookingService } from '../../utils/axiosInstance';
-import { extractArray } from '../../utils/extractArray';
 import { getMapsUrl, copyText, getWhatsAppUrl } from '../../utils/location';
 
 // ─────────────────────────────────────────────────────────────
@@ -39,12 +37,7 @@ const TONE = {
 // What the admin taps next for each status (one tap advances the order).
 const NEXT_ACTION = {
   pending:   { next: 'confirmed', row: 'Confirm',        full: 'Confirm Order',     tone: 'primary' },
-  confirmed: { next: 'completed', row: 'Mark Completed', full: 'Mark as Completed', tone: 'green', notification: 'Job completed' },
-};
-
-const STATUS_API_VALUE = {
-  confirmed: 'confirmed',
-  completed: 'completed',
+  confirmed: { next: 'completed', row: 'Mark Completed', full: 'Mark as Completed', tone: 'green' },
 };
 
 
@@ -86,105 +79,12 @@ const telHref = (phone) => `tel:${(phone || '').replace(/[^\d+]/g, '')}`;
 const timeNow = () =>
   new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
-const normalizeStatus = (status) => {
-  const key = String(status || '').toLowerCase().replace(/[\s_-]/g, '');
-  if (key.includes('complete')) return 'completed';
-  // En Route / Arrived are no longer separate steps — the job is still in progress.
-  if (key.includes('arrive') || key.includes('enroute') || key.includes('onroute') || key.includes('ontheway')) return 'confirmed';
-  if (key.includes('confirm') || key.includes('accept') || key.includes('schedule')) return 'confirmed';
-  return 'pending';
-};
-
 const formatDateTime = (date, time) => {
   if (date && time) return `${date}, ${time}`;
   return date || time || 'N/A';
 };
 
-const formatHistoryTime = (value) => {
-  if (!value) return undefined;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-};
-
-const mapCarWashBooking = (booking) => {
-  const cleanerName = booking.cleaner_name || booking.driver_name || booking.chauffeur_name;
-  const cleanerPhone = booking.cleaner_phone || booking.driver_phone || booking.chauffeur_phone;
-  const history = {
-    confirmed: formatHistoryTime(booking.confirmed_at || booking.confirmedAt),
-    completed: formatHistoryTime(booking.completed_at || booking.completedAt),
-  };
-
-  Object.keys(history).forEach((key) => {
-    if (!history[key]) delete history[key];
-  });
-
-  return {
-    id: booking.booking_number || booking.order_number || booking.reference || `CW-${booking.id}`,
-    originalId: booking.id,
-    customer: {
-      name: booking.passenger_name || booking.customer_name || booking.user_name || 'N/A',
-      phone: booking.contact_number || booking.customer_phone || booking.phone || 'N/A',
-    },
-    package: booking.package || booking.sub_Service || booking.sub_service || booking.service_package || 'N/A',
-    addOn: booking.add_ons || booking.addOns || booking.addon || '—',
-    vehicle: booking.car_name || booking.vehicle_name || booking.vehicle || 'N/A',
-    numberPlate: booking.car_number || booking.car_number_plate || booking.number_plate || booking.license_plate || booking.plate || '',
-    location: booking.from_address || booking.address || booking.location || 'N/A',
-    lat: booking.from_lat ?? booking.lat ?? booking.latitude,
-    lng: booking.from_lng ?? booking.lng ?? booking.longitude,
-    notes: booking.special_instructions || booking.notes || '',
-    payment: booking.payment_channel || booking.payment_method || '',
-    time: booking.date_time || formatDateTime(booking.date, booking.time),
-    bookedAt: booking.created_at || booking.createdAt || booking.date || 'N/A',
-    total: Number(booking.price || booking.total || booking.amount || 0),
-    status: normalizeStatus(booking.status),
-    cleaner: cleanerName || cleanerPhone ? {
-      name: cleanerName || 'Cleaner',
-      phone: cleanerPhone || 'N/A',
-    } : null,
-    history,
-    raw: booking,
-  };
-};
-
-/**
- * Manual order → "create booking CAR WASH" request (Postman collection).
- * Multipart form data, same keys the customer app sends.
- */
-const buildCreateOrderFormData = (values) => {
-  const fields = {
-    status: 'pending',
-    Service: 'car wash', // backend filter key is case-sensitive
-    passenger_name: values.customerName,
-    contact_number: values.phone,
-    sub_Service: values.packageName,
-    package: values.packageName,
-    package_price: values.packagePrice,
-    car_name: values.vehicle,
-    vehicle_price: values.vehiclePrice,
-    add_ons: values.addOn,
-    add_ons_price: values.addOnPrice,
-    car_number: values.numberPlate,
-    from_address: values.location,
-    date: values.date,
-    time: values.time,
-    date_time: `${values.date} ${values.time}`,
-    price: values.total,
-    payment_channel: values.payment,
-    payment_method: values.payment,
-    special_instructions: values.notes,
-  };
-  const fd = new FormData();
-  // Leave out empty optional fields rather than sending "" for a price/plate.
-  Object.entries(fields).forEach(([key, value]) => {
-    if (value === undefined || value === null || value === '') return;
-    fd.append(key, String(value));
-  });
-  return fd;
-};
-
-/** Same shape as a mapped API order — used when the list is in demo mode. */
+/** A manually entered order, in the same shape as the sample orders. */
 const buildLocalOrder = (values) => ({
   id: `CW-${String(Date.now()).slice(-6)}`,
   customer: { name: values.customerName, phone: values.phone },
@@ -493,11 +393,6 @@ function OrderDrawer({ order, onClose, onAdvance, onCopyLocation, onCopyMessage,
                 <CheckCircle className="w-4 h-4" aria-hidden="true" />
                 {action.full}
               </button>
-              {action.notification && (
-                <p className="text-[10px] text-gray-500 text-center">
-                  Sends customer notification: {action.notification}
-                </p>
-              )}
             </>
           ) : (
             <div className="w-full py-3 text-[13px] font-semibold flex items-center justify-center gap-2 bg-green-50 text-green-700 rounded">
@@ -526,11 +421,8 @@ export default function OrdersPage() {
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState(null);
   const [toast, setToast] = useState(null);
-  const [ordersLoading, setOrdersLoading] = useState(true);
-  const [ordersError, setOrdersError] = useState(null);
   const [checkedIds, setCheckedIds] = useState(() => new Set());
   const [pendingDelete, setPendingDelete] = useState(null); // orders awaiting confirmation
-  const [deleting, setDeleting] = useState(false);
   const [showNewOrder, setShowNewOrder] = useState(false);
   const { hasPermission } = useAuth();
   const canDelete = hasPermission('canDeleteRecords');
@@ -538,37 +430,6 @@ export default function OrdersPage() {
 
   const toggleSidebar = useCallback(() => setSidebarOpen((v) => !v), []);
   const closeNewOrder = useCallback(() => setShowNewOrder(false), []);
-
-const fetchCarWashOrders = useCallback(async () => {
-    try {
-      setOrdersLoading(true);
-      setOrdersError(null);
-
-      const response = await bookingService.getAllBookings({
-        status: 'all',
-        Service: 'car wash', // backend filter key is case-sensitive
-        field: '',
-        search: '',
-        sorting: { field: 'id', order: 'desc' },
-        page: 1,
-        limit: 100,
-      });
-
-      const carWashOrders = extractArray(response).map(mapCarWashBooking);
-      setOrders(carWashOrders);
-    } catch (error) {
-      console.error('Error fetching car wash orders:', error);
-      setOrders(SAMPLE_ORDERS);
-      setOrdersError('Could not load car wash bookings from the API. Showing demo data.');
-      setToast({ message: 'Car wash API failed. Showing demo data.', type: 'warning' });
-    } finally {
-      setOrdersLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchCarWashOrders();
-  }, [fetchCarWashOrders]);
 
   const counts = useMemo(() => {
     const c = { all: orders.length };
@@ -644,134 +505,53 @@ const fetchCarWashOrders = useCallback(async () => {
     window.open(getWhatsAppUrl(text), '_blank', 'noopener,noreferrer');
   }, [checkedOrders]);
 
-  const confirmDelete = useCallback(async () => {
+  // Dummy data only (client request): every action below changes the list on
+  // this screen and never calls the API.
+  const confirmDelete = useCallback(() => {
     const list = pendingDelete || [];
     if (list.length === 0 || !canDelete) return;
-    if (ordersError) {
-      setToast({ message: 'These are demo orders — nothing to delete on the server.', type: 'warning' });
-      return;
-    }
-
-    setDeleting(true);
-    const deleted = [];
-    let lastError = null;
-    for (const order of list) {
-      try {
-        await bookingService.deleteBooking(order.originalId || order.raw?.id);
-        deleted.push(order.id);
-      } catch (error) {
-        console.error(`Error deleting order #${order.id}:`, error);
-        lastError = error;
-      }
-    }
-    setDeleting(false);
-
-    if (deleted.length > 0) {
-      setOrders((prev) => prev.filter((o) => !deleted.includes(o.id)));
-      setCheckedIds((prev) => {
-        const next = new Set(prev);
-        deleted.forEach((id) => next.delete(id));
-        return next;
-      });
-      if (deleted.includes(selectedId)) setSelectedId(null);
-    }
-
-    if (!lastError) {
-      setToast({ message: deleted.length === 1 ? `Order #${deleted[0]} deleted` : `${deleted.length} orders deleted`, type: 'success' });
-    } else if (lastError.status === 404) {
-      setToast({ message: 'Delete is not available on the server yet — the backend needs a delete-booking endpoint.', type: 'error' });
-    } else {
-      const failed = list.length - deleted.length;
-      setToast({ message: `${failed} of ${list.length} order(s) could not be deleted: ${lastError.message || 'unknown error'}`, type: 'error' });
-    }
-  }, [pendingDelete, canDelete, ordersError, selectedId]);
-
-  // Manual entry. Throws on API failure so the modal keeps the form and shows why.
-  const handleCreateOrder = useCallback(async (values) => {
-    if (ordersError) {
-      // Demo mode (API unreachable): keep it on screen only, and say so.
-      const localOrder = buildLocalOrder(values);
-      setOrders((prev) => [localOrder, ...prev]);
-      setShowNewOrder(false);
-      setActiveTab('all');
-      setQuery('');
-      setToast({ message: `Demo mode — order #${localOrder.id} added on this screen only, not saved to the server.`, type: 'warning' });
-      return;
-    }
-
-    await bookingService.createBooking(buildCreateOrderFormData(values), {
-      // Let the browser set multipart/form-data with its boundary.
-      headers: { 'Content-Type': undefined },
+    const ids = list.map((o) => o.id);
+    setOrders((prev) => prev.filter((o) => !ids.includes(o.id)));
+    setCheckedIds((prev) => {
+      const next = new Set(prev);
+      ids.forEach((id) => next.delete(id));
+      return next;
     });
+    if (ids.includes(selectedId)) setSelectedId(null);
+    setToast({ message: ids.length === 1 ? `Order #${ids[0]} deleted` : `${ids.length} orders deleted`, type: 'success' });
+  }, [pendingDelete, canDelete, selectedId]);
+
+  // Manual entry: the new order goes to the top of the list as Pending.
+  const handleCreateOrder = useCallback((values) => {
+    const newOrder = buildLocalOrder(values);
+    setOrders((prev) => [newOrder, ...prev]);
     setShowNewOrder(false);
     setActiveTab('all');
     setQuery('');
-    setToast({ message: `Order for ${values.customerName} created`, type: 'success' });
-    fetchCarWashOrders();
-  }, [ordersError, fetchCarWashOrders]);
+    setToast({ message: `Order #${newOrder.id} for ${values.customerName} created`, type: 'success' });
+  }, []);
 
   const resetOrdersView = useCallback(() => {
+    setOrders(SAMPLE_ORDERS);
     setActiveTab('all');
     setQuery('');
     setSelectedId(null);
     setCheckedIds(new Set());
-    fetchCarWashOrders();
-    setToast({ message: 'Order filters reset', type: 'info' });
-  }, [fetchCarWashOrders]);
+    setToast({ message: 'Filters reset and sample orders restored', type: 'info' });
+  }, []);
 
-  const advanceOrder = useCallback(async (order) => {
+  const advanceOrder = useCallback((order) => {
     const action = NEXT_ACTION[order.status];
     if (!action) return;
     const sentAt = timeNow();
-    const previousOrder = order;
-    const bookingId = order.originalId || order.raw?.id || order.id;
-    let updatedOrder = null;
-
-    try {
-      // Every step (including pending → confirmed) goes through update-status,
-      // matching the "car wash / status update" request in the Postman collection.
-      const driverId = order.raw?.driver_id || order.raw?.driverId || order.cleaner?.id;
-      const response = await bookingService.updateStatus({
-        bookingId,
-        ...(driverId ? { driverId: String(driverId) } : {}),
-        newStatus: STATUS_API_VALUE[action.next] || action.next,
-      });
-      const backendOrder = response.data?.booking || response.data?.data || response.data?.result;
-      updatedOrder = backendOrder ? mapCarWashBooking(backendOrder) : null;
-    } catch (error) {
-      console.error('Error updating car wash order status:', error);
-      setToast({ message: `Failed to update #${order.id}. Please try again.`, type: 'error' });
-      return;
-    }
-
     setOrders((prev) =>
       prev.map((o) =>
         o.id === order.id
-          ? {
-              ...(updatedOrder || o),
-              status: action.next,
-              history: { ...(updatedOrder?.history || o.history), [action.next]: sentAt },
-              notifications: action.notification
-                ? [
-                    ...(o.notifications || []),
-                    {
-                      status: action.next,
-                      message: action.notification,
-                      sentAt,
-                    },
-                  ]
-                : o.notifications,
-            }
+          ? { ...o, status: action.next, history: { ...o.history, [action.next]: sentAt } }
           : o
       )
     );
-    const label = STATUS_META[action.next].label;
-    setToast({
-      message: action.notification
-        ? `Push notification sent: ${action.notification}`
-        : `#${previousOrder.id} → ${label}`,
-      type: 'success',
-    });
+    setToast({ message: `#${order.id} → ${STATUS_META[action.next].label}`, type: 'success' });
   }, []);
 
   return (
@@ -853,16 +633,6 @@ const fetchCarWashOrders = useCallback(async () => {
                 })}
               </div>
 
-              {(ordersLoading || ordersError) && (
-                <div className={`mx-5 mt-3 px-3 py-2 text-xs border ${
-                  ordersError
-                    ? 'bg-yellow-50 border-yellow-200 text-yellow-700'
-                    : 'bg-blue-50 border-blue-200 text-blue-700'
-                }`}>
-                  {ordersError || 'Loading car wash orders...'}
-                </div>
-              )}
-
               {/* Bulk actions */}
               {checkedOrders.length > 0 && (
                 <div className="mx-5 mt-3 px-3 py-2 flex flex-wrap items-center gap-2 bg-[var(--primary)]/5 border border-[var(--primary)]/20 text-sm">
@@ -882,10 +652,9 @@ const fetchCarWashOrders = useCallback(async () => {
                   {canDelete && (
                     <button
                       onClick={() => setPendingDelete(checkedOrders)}
-                      disabled={deleting}
-                      className="text-xs font-medium px-3 py-1.5 flex items-center gap-1.5 text-red-600 bg-white border border-red-200 hover:bg-red-50 disabled:opacity-50"
+                      className="text-xs font-medium px-3 py-1.5 flex items-center gap-1.5 text-red-600 bg-white border border-red-200 hover:bg-red-50"
                     >
-                      <Trash2 className="w-3.5 h-3.5" aria-hidden="true" /> {deleting ? 'Deleting…' : 'Delete'}
+                      <Trash2 className="w-3.5 h-3.5" aria-hidden="true" /> Delete
                     </button>
                   )}
                   <button
