@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Customer Data Filters – Preview</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,Segoe UI,Roboto,sans-serif;background:#f5f7fa;color:#1b2430}
+main{max-width:1150px;margin:0 auto;padding:24px}
+h1{margin:0 0 4px;font-size:26px}h2{font-size:18px;margin:30px 0 12px}
+.sub{color:#6b7785;margin:0 0 18px}
+.note{background:#eef4ff;border:1px solid #c9dcff;color:#1d4ed8;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:18px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:16px}
+.card{background:#fff;border:1px solid #e3e8ee;border-radius:10px;padding:12px 14px;cursor:pointer}
+.card.on{border-color:#1f6feb;box-shadow:0 0 0 2px #1f6feb33}
+.card b{font-size:24px;display:block}.card span{font-size:13px;color:#6b7785}
+.filters{background:#fff;border:1px solid #e3e8ee;border-radius:10px;padding:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:14px}
+label{font-size:12px;color:#6b7785;display:block;margin-bottom:4px;font-weight:600}
+select,input{width:100%;padding:8px;border:1px solid #d5dbe3;border-radius:8px;font-size:14px;background:#fff}
+.row{display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
+button{padding:8px 14px;border-radius:8px;border:1px solid #d5dbe3;background:#fff;cursor:pointer;font-size:14px}
+button.p{background:#1f6feb;color:#fff;border-color:#1f6feb}
+.wrap{background:#fff;border:1px solid #e3e8ee;border-radius:10px;overflow-x:auto}
+table{width:100%;border-collapse:collapse;min-width:1100px}
+th,td{padding:10px 12px;text-align:left;border-bottom:1px solid #eef1f5;font-size:14px}
+th{background:#f9fafb;font-size:12px;color:#6b7785;text-transform:uppercase}
+.b{padding:3px 10px;border-radius:999px;font-size:12px;font-weight:600}
+.Repeat{background:#dcfce7;color:#15803d}.Occasional{background:#dbeafe;color:#1d4ed8}
+.Paid{background:#dcfce7;color:#15803d}.Unpaid{background:#fee2e2;color:#b91c1c}.b.tg{cursor:pointer;border:0;font-family:inherit}
+td select.inl{padding:5px 6px;font-size:13px;min-width:120px}
+.Rare{background:#fef3c7;color:#b7791f}.New{background:#ede9fe;color:#6d28d9}.Inactive{background:#fee2e2;color:#b91c1c}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.f{background:#fff;border:1px solid #e3e8ee;border-radius:10px;padding:14px}
+.f h3{margin:0 0 6px;font-size:15px}.f p{margin:0;font-size:13px;color:#4b5563;line-height:1.5}
+.tag{font-size:11px;background:#fff7ed;color:#c2410c;padding:2px 8px;border-radius:999px;float:right}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;place-items:center;padding:16px;z-index:10}
+.modal.show{display:grid}.box{background:#fff;border-radius:12px;padding:22px;max-width:520px;width:100%;max-height:92vh;overflow:auto}
+.box h3{margin:0 0 4px;font-size:18px}.box textarea{width:100%;min-height:110px;padding:10px;border:1px solid #d5dbe3;border-radius:8px;font:inherit;font-size:14px;resize:vertical}
+.opt{display:flex;gap:8px;align-items:center;padding:10px;border:1px solid #e3e8ee;border-radius:8px;margin-bottom:8px;font-size:14px;cursor:pointer}
+.opt input{width:auto}.opt.dis{opacity:.45;cursor:not-allowed}
+.prev{background:#e7f8ec;border-radius:10px;padding:10px 12px;font-size:14px;white-space:pre-wrap;margin:6px 0 12px}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#0f172a;color:#fff;padding:10px 18px;border-radius:8px;display:none;font-size:14px;z-index:20}
+button.g{background:#16a34a;color:#fff;border-color:#16a34a}
+.empty{padding:24px;text-align:center;color:#6b7785}
+</style></head><body><main>
+<h1>Customer Data – Filters Preview</h1>
+<p class="sub">This shows how your customer data can be filtered once the complete dashboard is delivered.</p>
+<div class="note">Sample data only. Try the filters below – this is exactly how it will work with your real customers.</div>
+
+<div class="cards" id="cards"></div>
+
+<div class="filters">
+ <div><label>Search</label><input id="q" placeholder="Name, phone or plate"></div>
+ <div><label>Customer type</label><select id="seg"><option value="">All</option><option>Repeat</option><option>Occasional</option><option>Rare</option><option>New</option><option>Inactive</option></select></div>
+ <div><label>Last visit</label><select id="last"><option value="">Any time</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="90">Last 90 days</option><option value="old">More than 60 days ago</option></select></div>
+ <div><label>Number of visits</label><select id="vis"><option value="">Any</option><option value="1">1 visit</option><option value="2">2 – 3 visits</option><option value="4">4+ visits</option></select></div>
+ <div><label>Service</label><select id="svc"><option value="">All</option></select></div>
+ <div><label>Vehicle type</label><select id="veh"><option value="">All</option></select></div>
+ <div><label>Discount</label><select id="disc"><option value="">All</option><option>Loyalty Free</option><option>Fleet Discount</option><option>Coupon</option></select></div>
+ <div><label>Payment method</label><select id="pay"><option value="">All</option><option>Fawran</option><option>Paylater</option><option>Partner Credit</option></select></div>
+ <div><label>Status</label><select id="stat"><option value="">All</option><option>Paid</option><option>Unpaid</option></select></div>
+ <div><label>Total spent</label><select id="spent"><option value="">Any</option><option value="0-300">Below QAR 300</option><option value="300-800">QAR 300 – 800</option><option value="800+">QAR 800+</option></select></div>
+</div>
+<div class="row"><button id="clear">Clear filters</button><button class="p" id="exp">Export to Excel (CSV)</button><button class="g" id="bc">📣 Send promotion</button><span id="selc" style="font-size:13px;color:#6b7785"></span><span id="count" style="margin-left:auto;color:#6b7785;font-size:14px"></span></div>
+<div class="wrap"><table><thead><tr><th><input type="checkbox" id="all" title="Select all shown"></th><th>Customer</th><th>Phone</th><th>Plate</th><th>Vehicle</th><th>Favourite service</th><th>Discount</th><th>Visits</th><th>Last visit</th><th>Spent (QAR)</th><th>Payment method</th><th>Status</th><th>Type</th></tr></thead><tbody id="body"></tbody></table></div>
+
+<h2>How customer types are decided</h2>
+<div class="grid">
+ <div class="f"><h3><span class="b Repeat">Repeat</span></h3><p>4 or more visits, and visited in the last 60 days</p></div>
+ <div class="f"><h3><span class="b Occasional">Occasional</span></h3><p>2 to 3 visits, and visited in the last 60 days</p></div>
+ <div class="f"><h3><span class="b Rare">Rare</span></h3><p>Only 1 visit, more than 30 days ago</p></div>
+ <div class="f"><h3><span class="b New">New</span></h3><p>First visit in the last 30 days</p></div>
+ <div class="f"><h3><span class="b Inactive">Inactive</span></h3><p>No visit for more than 60 days</p></div>
+</div>
+<p class="sub" style="margin-top:8px">These rules can be changed to match how you want to define your customers.</p>
+
+<h2>Other features we will add</h2>
+<div class="grid">
+ <div class="f"><span class="tag">Complete version</span><h3>📣 Broadcast promotions</h3><p>Send an offer or promotion message to all customers, to a filtered group (for example, inactive customers), or to hand-picked customers, straight from the dashboard.</p></div>
+ <div class="f"><span class="tag">Complete version</span><h3>Customer profile</h3><p>One page per customer with full visit history, vehicles, services and total spending.</p></div>
+ <div class="f"><span class="tag">Complete version</span><h3>Reports and summary</h3><p>Orders per day, week or month, revenue, most popular services and busiest areas.</p></div>
+ <div class="f"><span class="tag">Complete version</span><h3>Call / WhatsApp from list</h3><p>Contact any filtered group of customers directly, for offers or follow-ups.</p></div>
+ <div class="f"><span class="tag">Complete version</span><h3>Notes and tags</h3><p>Mark customers as VIP, corporate or needs follow-up, and add private notes.</p></div>
+ <div class="f"><span class="tag">Complete version</span><h3>Export</h3><p>Download any filtered list as Excel or CSV in one click.</p></div>
+ <div class="f"><span class="tag">Complete version</span><h3>Top customers</h3><p>See who visits most and who spends most, so you can reward them.</p></div>
+</div>
+</main>
+<div class="modal" id="modal"><div class="box">
+ <h3>Send promotion</h3><p class="sub" style="margin:0 0 12px">Write one message and send it to your customers.</p>
+ <label>Send to</label>
+ <label class="opt"><input type="radio" name="to" value="all" checked> <span>All customers <b id="n-all"></b></span></label>
+ <label class="opt"><input type="radio" name="to" value="filt"> <span>Customers in the current filter <b id="n-filt"></b></span></label>
+ <label class="opt" id="o-sel"><input type="radio" name="to" value="sel"> <span>Selected customers (tick in the table) <b id="n-sel"></b></span></label>
+ <label style="margin-top:10px">Send via</label>
+ <div class="row"><select id="chan" style="width:auto"><option>WhatsApp</option><option>SMS</option></select>
+ <select id="tpl" style="width:auto"><option value="">Choose a template</option><option value="0">Weekend offer</option><option value="1">We miss you</option><option value="2">Loyalty reward</option></select></div>
+ <label>Message <span style="font-weight:400">(use {name} to add the customer's name)</span></label>
+ <textarea id="msg" placeholder="Hi {name}, enjoy 20% off your next wash this weekend!"></textarea>
+ <label style="margin-top:10px">Preview</label><div class="prev" id="prev"></div>
+ <div class="row" style="justify-content:flex-end"><button id="cancel">Cancel</button><button class="g" id="send">Send now</button></div>
+</div></div>
+<div class="toast" id="toast"></div>
+<script>
+const rows=[
+["Mohammed A.","+974 3344 5566","QAR 3456","SUV","Premium Detail","Fleet Discount",8,5,2640,"Partner Credit","Paid"],
+["Jane Doe","+974 5511 2233","QAR 1234","Sedan","Classic Care","Loyalty Free",6,3,720,"Fawran","Paid"],
+["Khalid B.","+974 6677 3344","QAR 2345","4x4 / Pickup","Quick Shine + Hygiene","Coupon",5,9,610,"Paylater","Unpaid"],
+["Noor S.","+974 5544 8822","QAR 7890","Sedan","Classic Care","Loyalty Free",4,12,480,"Fawran","Paid"],
+["Sara K.","+974 7788 9900","QAR 4567","4x4 / Pickup","Quick Shine","Coupon",3,20,330,"Fawran","Paid"],
+["Fahad Q.","+974 6611 2200","QAR 8901","SUV","Premium Detail","Fleet Discount",2,35,540,"Partner Credit","Paid"],
+["Hind A.","+974 5522 6611","QAR 6789","Van","Classic Care","Coupon",2,48,260,"Paylater","Unpaid"],
+["Omar F.","+974 6633 1188","QAR 5678","SUV","Premium Detail","Loyalty Free",1,4,280,"Fawran","Paid"],
+["Aisha M.","+974 5599 2277","QAR 9012","Hatchback","Quick Shine","Coupon",1,10,90,"Paylater","Paid"],
+["Yusuf R.","+974 6611 4477","QAR 0123","Van","Classic Care","Fleet Discount",1,45,130,"Partner Credit","Unpaid"],
+["Layla H.","+974 5522 3311","QAR 1357","SUV","Quick Shine","Loyalty Free",3,75,300,"Fawran","Paid"],
+["Ahmed T.","+974 3300 7766","QAR 2468","Sedan","Premium Detail","Coupon",1,92,150,"Paylater","Unpaid"],
+["Mariam D.","+974 5511 8899","QAR 3691","4x4 / Pickup","Classic Care","Fleet Discount",5,80,700,"Partner Credit","Paid"],
+["Ali H.","+974 6600 5511","QAR 4820","SUV","Quick Shine + Hygiene","Loyalty Free",1,120,110,"Fawran","Paid"],
+["Reem N.","+974 5533 2244","QAR 5931","Sedan","Classic Care","Coupon",2,66,230,"Paylater","Unpaid"]
+].map(r=>{const d={name:r[0],phone:r[1],plate:r[2],veh:r[3],svc:r[4],disc:r[5],visits:r[6],ago:r[7],spent:r[8],pay:r[9],stat:r[10]};
+ d.seg=d.ago>60?"Inactive":(d.visits==1&&d.ago<=30)?"New":d.visits==1?"Rare":d.visits<=3?"Occasional":"Repeat";return d});
+const $=id=>document.getElementById(id);
+const uniq=k=>[...new Set(rows.map(r=>r[k]))].sort();
+[["svc","svc"],["veh","veh"]].forEach(([id,k])=>uniq(k).forEach(v=>$(id).add(new Option(v,v))));
+const sel=new Set();
+const tpls=["Hi {name}, enjoy 20% off any wash this weekend at Magic Track. Book now!","Hi {name}, we miss you! Come back this week and get a free interior freshener with your wash.","Hi {name}, thank you for being a loyal customer. Your next Premium Detail is 15% off."];
+const ids=["q","seg","last","vis","svc","veh","disc","pay","stat","spent"];
+function lastText(a){if(a==0)return"Today";const d=new Date();d.setDate(d.getDate()-a);return d.toLocaleDateString("en-GB",{day:"numeric",month:"short"})+" ("+a+"d ago)"}
+function filtered(){
+ const q=$("q").value.toLowerCase(),seg=$("seg").value,last=$("last").value,vis=$("vis").value,svc=$("svc").value,veh=$("veh").value,disc=$("disc").value,pay=$("pay").value,stat=$("stat").value,sp=$("spent").value;
+ return rows.filter(r=>{
+  if(q&&!(r.name+r.phone+r.plate).toLowerCase().includes(q))return false;
+  if(seg&&r.seg!==seg)return false;
+  if(last==="old"?r.ago<=60:last&&r.ago>+last)return false;
+  if(vis==="1"&&r.visits!==1)return false;
+  if(vis==="2"&&!(r.visits>=2&&r.visits<=3))return false;
+  if(vis==="4"&&r.visits<4)return false;
+  if(svc&&r.svc!==svc)return false;if(veh&&r.veh!==veh)return false;if(disc&&r.disc!==disc)return false;if(pay&&r.pay!==pay)return false;if(stat&&r.stat!==stat)return false;
+  if(sp==="0-300"&&r.spent>=300)return false;
+  if(sp==="300-800"&&(r.spent<300||r.spent>800))return false;
+  if(sp==="800+"&&r.spent<800)return false;
+  return true});
+}
+function render(){
+ const list=filtered();
+ $("count").textContent="Showing "+list.length+" of "+rows.length+" customers";
+ $("body").innerHTML=list.length?list.map(r=>`<tr><td><input type="checkbox" data-p="${r.phone}" ${sel.has(r.phone)?"checked":""}></td><td>${r.name}</td><td>${r.phone}</td><td>${r.plate}</td><td>${r.veh}</td><td>${r.svc}</td><td><select class="inl" data-f="disc" data-p="${r.phone}"><option${r.disc==="Loyalty Free"?" selected":""}>Loyalty Free</option><option${r.disc==="Fleet Discount"?" selected":""}>Fleet Discount</option><option${r.disc==="Coupon"?" selected":""}>Coupon</option></select></td><td>${r.visits}</td><td>${lastText(r.ago)}</td><td>${r.spent}</td><td><select class="inl" data-f="pay" data-p="${r.phone}"><option${r.pay==="Fawran"?" selected":""}>Fawran</option><option${r.pay==="Paylater"?" selected":""}>Paylater</option><option${r.pay==="Partner Credit"?" selected":""}>Partner Credit</option></select></td><td><button class="b tg ${r.stat}" data-t="${r.phone}" title="Click to change status">${r.stat}</button></td><td><span class="b ${r.seg}">${r.seg}</span></td></tr>`).join(""):`<tr><td colspan="13" class="empty">No customers match these filters</td></tr>`;
+ const segs=["Repeat","Occasional","Rare","New","Inactive"],cur=$("seg").value;
+ $("cards").innerHTML=`<div class="card ${cur===""?"on":""}" data-s=""><b>${rows.length}</b><span>All customers</span></div>`+segs.map(s=>`<div class="card ${cur===s?"on":""}" data-s="${s}"><b>${rows.filter(r=>r.seg===s).length}</b><span>${s} customers</span></div>`).join("");
+}
+ids.forEach(i=>$(i).addEventListener("input",render));
+$("body").addEventListener("click",e=>{const t=e.target.closest("[data-t]");if(t){const r=rows.find(x=>x.phone===t.dataset.t);r.stat=r.stat==="Paid"?"Unpaid":"Paid";render()}});
+$("cards").addEventListener("click",e=>{const c=e.target.closest(".card");if(c){$("seg").value=c.dataset.s;render()}});
+$("clear").onclick=()=>{ids.forEach(i=>$(i).value="");render()};
+$("exp").onclick=()=>{const l=filtered();const csv=["Name,Phone,Plate,Vehicle,Service,Discount,Visits,Days since last visit,Spent,Payment method,Status,Type",...l.map(r=>[r.name,r.phone,r.plate,r.veh,r.svc,r.disc,r.visits,r.ago,r.spent,r.pay,r.stat,r.seg].map(v=>`"${v}"`).join(","))].join("\n");
+ const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));a.download="customers.csv";a.click()};
+function recips(){const m=document.querySelector('input[name=to]:checked').value;return m==="all"?rows:m==="filt"?filtered():rows.filter(r=>sel.has(r.phone))}
+function upd(){$("n-all").textContent="("+rows.length+")";$("n-filt").textContent="("+filtered().length+")";$("n-sel").textContent="("+sel.size+")";
+ const none=sel.size===0;$("o-sel").classList.toggle("dis",none);$("o-sel").querySelector("input").disabled=none;
+ if(none&&document.querySelector('input[name=to]:checked').value==="sel")document.querySelector('input[name=to][value=all]').checked=true;
+ const l=recips(),f=l[0]?l[0].name.split(" ")[0]:"Customer";$("prev").textContent=($("msg").value||"Your message will appear here").replaceAll("{name}",f);
+ $("send").textContent="Send to "+l.length+" customer"+(l.length==1?"":"s");$("send").disabled=!l.length||!$("msg").value.trim()}
+function toast(m){const t=$("toast");t.textContent=m;t.style.display="block";setTimeout(()=>t.style.display="none",2800)}
+$("body").addEventListener("change",e=>{const f=e.target.dataset.f;if(f){const r=rows.find(x=>x.phone===e.target.dataset.p);r[f]=e.target.value;render();return}
+ const p=e.target.type==="checkbox"?e.target.dataset.p:null;if(p){e.target.checked?sel.add(p):sel.delete(p);$("selc").textContent=sel.size?sel.size+" selected":""}});
+$("all").onchange=e=>{filtered().forEach(r=>e.target.checked?sel.add(r.phone):sel.delete(r.phone));$("selc").textContent=sel.size?sel.size+" selected":"";render()};
+$("bc").onclick=()=>{if(sel.size)document.querySelector('input[name=to][value=sel]').checked=true;upd();$("modal").classList.add("show")};
+$("cancel").onclick=()=>$("modal").classList.remove("show");
+$("tpl").onchange=e=>{if(e.target.value!=="")$("msg").value=tpls[e.target.value];upd()};
+document.querySelectorAll('input[name=to]').forEach(r=>r.onchange=upd);$("msg").oninput=upd;
+$("send").onclick=()=>{const n=recips().length;$("modal").classList.remove("show");toast("Demo: promotion sent to "+n+" customer"+(n==1?"":"s")+" via "+$("chan").value)};
+render();
+</script></body></html>
