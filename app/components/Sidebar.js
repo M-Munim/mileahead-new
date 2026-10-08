@@ -1,16 +1,17 @@
 'use client';
 
-import { Droplets, X, ChevronRight } from 'lucide-react';
+import { Droplets, Users, X, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect } from 'react';
 import NextImage from 'next/image';
 import logo from "../../public/magic-track-logo.png";
 
-// Client scope (initial stage): Car Wash Orders is the only module.
+// Client scope (initial stage): Car Wash Orders and Customer Data only.
 // More modules will be added back here as they are requested.
 const menuItems = [
   { icon: Droplets, label: 'Car Wash Orders', href: '/orders' },
+  { icon: Users, label: 'Customer Data', href: '/customer-data' },
 ];
 
 export default function Sidebar({ isOpen, toggleSidebar }) {
