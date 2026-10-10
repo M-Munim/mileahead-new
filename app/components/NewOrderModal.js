@@ -1,59 +1,48 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { Loader, X, User, Droplets, MapPin, CreditCard, AlertCircle } from 'lucide-react';
+import { Loader, X, User, Droplets, Clock, CreditCard, Tag, AlertCircle } from 'lucide-react';
 import { useFocusTrap } from '@/app/hooks/useFocusTrap';
+import {
+  SERVICE_GROUPS, EXTRAS, DISCOUNTS, PAYMENT_METHODS,
+  vehiclesForService, servicePrice, priceFor,
+} from '../../utils/priceList';
 
 /**
- * Manual car wash order entry — for walk-in / phone customers that an Admin or
- * Manager books on their behalf. Dummy data only (client request): the price
- * lists below are fixed and nothing is sent to the API. The total is suggested
- * from them and stays editable.
+ * Manual order entry — the person running the car wash center enters each
+ * customer who comes in. Services, vehicle types and extras follow the Magic
+ * Track price list; the total is suggested from it and stays editable.
+ * Dummy data only (client request): nothing is sent to the API.
  *
  * The modal only collects and validates. `onSubmit(values)` adds the order.
  */
 
-// Dummy price lists (QAR): package + vehicle surcharge + add-on.
-const OPTIONS = {
-  packages: [
-    { name: 'Quick Shine', price: 35 },
-    { name: 'Classic Care', price: 50 },
-    { name: 'Premium Detail', price: 80 },
-  ],
-  vehicles: [
-    { name: 'Hatchback', price: 0 },
-    { name: 'Sedan', price: 5 },
-    { name: 'SUV', price: 10 },
-    { name: '4x4 / Pickup', price: 15 },
-    { name: 'Van', price: 15 },
-  ],
-  addons: [
-    { name: 'Hygiene Plus', price: 20 },
-    { name: 'Interior Vacuum', price: 15 },
-    { name: 'Engine Bay Clean', price: 25 },
-  ],
+const pad = (n) => String(n).padStart(2, '0');
+
+/** Today's date (YYYY-MM-DD) and the current time (HH:MM), local time zone. */
+const nowLocal = () => {
+  const d = new Date();
+  return {
+    date: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
+    time: `${pad(d.getHours())}:${pad(d.getMinutes())}`,
+  };
 };
 
 const EMPTY_FORM = {
   customerName: '',
   phone: '',
-  packageName: '',
+  service: '',
   vehicle: '',
-  addOn: '',
+  extras: [],
   numberPlate: '',
-  location: '',
   date: '',
   time: '',
-  payment: 'cash',
+  discount: '',
+  couponSerial: '',
+  payment: '',
+  paymentStatus: 'unpaid',
   notes: '',
   total: '',
-};
-
-/** Today as YYYY-MM-DD in the user's local time zone. */
-const todayLocal = () => {
-  const d = new Date();
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 };
 
 function SectionHeader({ icon: Icon, title }) {
@@ -76,12 +65,11 @@ const Required = () => <span className="text-red-500" aria-hidden="true"> *</spa
 
 export default function NewOrderModal({ onClose, onSubmit }) {
   const modalRef = useFocusTrap(true, onClose);
-  const [form, setForm] = useState(() => ({ ...EMPTY_FORM, date: todayLocal() }));
+  const [form, setForm] = useState(() => ({ ...EMPTY_FORM, ...nowLocal() }));
   const [priceTouched, setPriceTouched] = useState(false);
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
   const [submitError, setSubmitError] = useState('');
-  const options = OPTIONS;
 
   // Close on Escape is handled by useFocusTrap; lock page scroll while open.
   useEffect(() => {
@@ -89,35 +77,50 @@ export default function NewOrderModal({ onClose, onSubmit }) {
     return () => { document.body.style.overflow = ''; };
   }, []);
 
-  const priceOf = (list, name) => list.find((o) => o.name === name)?.price;
-
-  const packagePrice = priceOf(options.packages, form.packageName);
-  const vehiclePrice = priceOf(options.vehicles, form.vehicle);
-  const addOnPrice = priceOf(options.addons, form.addOn);
-
-  // Package + vehicle surcharge + add-on, the same way the Pricing module adds up.
+  const vehicleOptions = vehiclesForService(form.service);
   const calculatedTotal = useMemo(
-    () => (packagePrice ?? 0) + (vehiclePrice ?? 0) + (addOnPrice ?? 0),
-    [packagePrice, vehiclePrice, addOnPrice]
+    () => priceFor(form.service, form.vehicle, form.extras),
+    [form.service, form.vehicle, form.extras]
   );
   const totalValue = priceTouched ? form.total : (calculatedTotal > 0 ? String(calculatedTotal) : '');
+  const hasStartingPrice = form.extras.some((name) => EXTRAS.find((e) => e.name === name)?.from);
+
+  const clearError = (...names) => {
+    if (names.some((n) => errors[n])) {
+      setErrors((prev) => Object.fromEntries(Object.entries(prev).filter(([k]) => !names.includes(k))));
+    }
+  };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
-    if (errors[name]) setErrors((prev) => ({ ...prev, [name]: '' }));
+    setForm((prev) => {
+      const next = { ...prev, [name]: value };
+      // PPF and wash services use different vehicle sizes — drop a vehicle the new service doesn't offer.
+      if (name === 'service' && !vehiclesForService(value).includes(prev.vehicle)) next.vehicle = '';
+      if (name === 'discount' && value !== 'Coupon') next.couponSerial = '';
+      return next;
+    });
+    clearError(name);
+  };
+
+  const toggleExtra = (name) => {
+    setForm((prev) => ({
+      ...prev,
+      extras: prev.extras.includes(name) ? prev.extras.filter((x) => x !== name) : [...prev.extras, name],
+    }));
+    clearError('service');
   };
 
   const handleTotalChange = (e) => {
     setPriceTouched(true);
     setForm((prev) => ({ ...prev, total: e.target.value }));
-    if (errors.total) setErrors((prev) => ({ ...prev, total: '' }));
+    clearError('total');
   };
 
   const resetToCalculatedTotal = () => {
     setPriceTouched(false);
     setForm((prev) => ({ ...prev, total: '' }));
-    setErrors((prev) => ({ ...prev, total: '' }));
+    clearError('total');
   };
 
   const validate = (values) => {
@@ -125,11 +128,12 @@ export default function NewOrderModal({ onClose, onSubmit }) {
     if (!values.customerName) next.customerName = 'Customer name is required';
     if (!values.phone) next.phone = 'Phone number is required';
     else if (values.phone.replace(/\D/g, '').length < 7) next.phone = 'Enter a valid phone number';
-    if (!values.packageName) next.packageName = 'Package is required';
+    if (!values.service && values.extras.length === 0) next.service = 'Choose a service or at least one extra';
     if (!values.vehicle) next.vehicle = 'Vehicle type is required';
-    if (!values.location) next.location = 'Location is required';
     if (!values.date) next.date = 'Date is required';
     if (!values.time) next.time = 'Time is required';
+    if (values.discount === 'Coupon' && !values.couponSerial) next.couponSerial = 'Coupon serial number is required';
+    if (!values.payment) next.payment = 'Payment method is required';
     if (totalValue === '' || !Number.isFinite(Number(totalValue)) || Number(totalValue) < 0) {
       next.total = 'Enter a valid total of 0 or more';
     }
@@ -150,13 +154,7 @@ export default function NewOrderModal({ onClose, onSubmit }) {
     setSaving(true);
     setSubmitError('');
     try {
-      await onSubmit({
-        ...values,
-        total: Number(totalValue),
-        packagePrice,
-        vehiclePrice,
-        addOnPrice: values.addOn ? addOnPrice : undefined,
-      });
+      await onSubmit({ ...values, total: Number(totalValue) });
     } catch (err) {
       console.error('Create car wash order error', err);
       setSubmitError(err?.message || 'Could not create the order. Please try again.');
@@ -174,23 +172,6 @@ export default function NewOrderModal({ onClose, onSubmit }) {
     'aria-describedby': errors[name] ? `new-order-${name}-error` : undefined,
   });
 
-  /** A select for the price list, or a plain text field if the list is empty. */
-  const renderChoice = (name, list, placeholder, { optional = false } = {}) => {
-    if (list.length === 0) {
-      return <input {...fieldProps(name)} placeholder={placeholder} />;
-    }
-    return (
-      <select {...fieldProps(name)}>
-        <option value="">{optional ? 'None' : `Select ${placeholder.toLowerCase()}`}</option>
-        {list.map((o) => (
-          <option key={o.id ?? o.name} value={o.name}>
-            {o.name}{o.price ? ` — QAR ${o.price}` : ''}
-          </option>
-        ))}
-      </select>
-    );
-  };
-
   return (
     <div className="fixed inset-0 bg-black/40 modal-backdrop z-50 flex items-center justify-center p-4">
       <div
@@ -204,7 +185,7 @@ export default function NewOrderModal({ onClose, onSubmit }) {
         <div className="sticky top-0 z-10 bg-white flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <div>
             <h2 id="new-order-modal-title" className="text-base font-semibold text-gray-900">New Car Wash Order</h2>
-            <p className="text-xs text-gray-500 mt-0.5">Enter a customer&apos;s booking manually. It starts as Pending.</p>
+            <p className="text-xs text-gray-500 mt-0.5">Enter the details of the customer at the center.</p>
           </div>
           <button type="button" onClick={onClose} aria-label="Close" className="btn-icon p-1.5 hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-600">
             <X className="w-5 h-5" aria-hidden="true" />
@@ -229,31 +210,69 @@ export default function NewOrderModal({ onClose, onSubmit }) {
             {/* Service */}
             <SectionHeader icon={Droplets} title="Service" />
             <div>
-              <label htmlFor="new-order-packageName">Package<Required /></label>
-              {renderChoice('packageName', options.packages, 'Package')}
-              <FieldError id="new-order-packageName-error" message={errors.packageName} />
+              <label htmlFor="new-order-service">Service</label>
+              <select {...fieldProps('service')}>
+                <option value="">Select service</option>
+                {SERVICE_GROUPS.map((group) => (
+                  <optgroup key={group.key} label={group.title}>
+                    {group.services.map((s) => (
+                      <option key={s.name} value={s.name}>{s.name}</option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+              <FieldError id="new-order-service-error" message={errors.service} />
+              {!errors.service && (
+                <p className="mt-1 text-[11px] text-gray-500">Leave empty if the customer only wants extras.</p>
+              )}
             </div>
             <div>
               <label htmlFor="new-order-vehicle">Vehicle Type<Required /></label>
-              {renderChoice('vehicle', options.vehicles, 'Vehicle type')}
+              <select {...fieldProps('vehicle')}>
+                <option value="">Select vehicle type</option>
+                {vehicleOptions.map((v) => {
+                  const price = servicePrice(form.service, v);
+                  return (
+                    <option key={v} value={v}>{v}{price !== undefined ? ` — QAR ${price.toLocaleString('en-US')}` : ''}</option>
+                  );
+                })}
+              </select>
               <FieldError id="new-order-vehicle-error" message={errors.vehicle} />
             </div>
-            <div>
-              <label htmlFor="new-order-addOn">Add-on</label>
-              {renderChoice('addOn', options.addons, 'Add-on (optional)', { optional: true })}
+            <div className="md:col-span-2">
+              <span className="block text-[13px] font-medium text-gray-700 mb-1.5">Upholstery & Interior Extras</span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {EXTRAS.map((extra) => {
+                  const checked = form.extras.includes(extra.name);
+                  return (
+                    <label
+                      key={extra.name}
+                      className={`flex items-center gap-2.5 px-3 py-2 mb-0 border text-sm font-normal cursor-pointer transition-colors ${
+                        checked ? 'border-[var(--primary)] bg-[var(--primary-light)]' : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleExtra(extra.name)}
+                        className="w-4 h-4 accent-[var(--primary)]"
+                      />
+                      <span className="flex-1 text-gray-800">{extra.name}</span>
+                      <span className="text-xs text-gray-500 whitespace-nowrap">
+                        {extra.from ? 'From ' : ''}QAR {extra.price}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
             </div>
             <div>
               <label htmlFor="new-order-numberPlate">Number Plate</label>
               <input {...fieldProps('numberPlate')} placeholder="e.g. 123456" autoComplete="off" />
             </div>
 
-            {/* Location & schedule */}
-            <SectionHeader icon={MapPin} title="Location & Time" />
-            <div className="md:col-span-2">
-              <label htmlFor="new-order-location">Location<Required /></label>
-              <input {...fieldProps('location')} placeholder="Street, area, Doha" autoComplete="off" />
-              <FieldError id="new-order-location-error" message={errors.location} />
-            </div>
+            {/* Date & time */}
+            <SectionHeader icon={Clock} title="Date & Time" />
             <div>
               <label htmlFor="new-order-date">Date<Required /></label>
               <input {...fieldProps('date')} type="date" />
@@ -265,15 +284,62 @@ export default function NewOrderModal({ onClose, onSubmit }) {
               <FieldError id="new-order-time-error" message={errors.time} />
             </div>
 
+            {/* Discount */}
+            <SectionHeader icon={Tag} title="Discount" />
+            <div>
+              <label htmlFor="new-order-discount">Discount</label>
+              <select {...fieldProps('discount')}>
+                <option value="">No discount</option>
+                {DISCOUNTS.map((d) => <option key={d} value={d}>{d}</option>)}
+              </select>
+            </div>
+            {form.discount === 'Coupon' && (
+              <div>
+                <label htmlFor="new-order-couponSerial">Coupon Serial Number<Required /></label>
+                <input {...fieldProps('couponSerial')} placeholder="e.g. MT-2041" autoComplete="off" />
+                <FieldError id="new-order-couponSerial-error" message={errors.couponSerial} />
+              </div>
+            )}
+
             {/* Payment */}
             <SectionHeader icon={CreditCard} title="Payment" />
             <div>
-              <label htmlFor="new-order-payment">Payment Method</label>
+              <label htmlFor="new-order-payment">Payment Method<Required /></label>
               <select {...fieldProps('payment')}>
-                <option value="cash">Cash</option>
-                <option value="card">Card</option>
+                <option value="">Select payment method</option>
+                {PAYMENT_METHODS.map((p) => <option key={p} value={p}>{p}</option>)}
               </select>
+              <FieldError id="new-order-payment-error" message={errors.payment} />
             </div>
+            <fieldset>
+              <legend className="text-[13px] font-medium text-gray-700 mb-1.5">Payment Status<Required /></legend>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { value: 'paid', label: 'Paid', on: 'border-green-600 bg-green-50 text-green-700' },
+                  { value: 'unpaid', label: 'Unpaid', on: 'border-red-500 bg-red-50 text-red-700' },
+                ].map((opt) => {
+                  const checked = form.paymentStatus === opt.value;
+                  return (
+                    <label
+                      key={opt.value}
+                      className={`flex items-center justify-center gap-2 px-3 py-2 mb-0 border text-sm font-semibold cursor-pointer transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-[var(--primary)] ${
+                        checked ? opt.on : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="paymentStatus"
+                        value={opt.value}
+                        checked={checked}
+                        onChange={handleChange}
+                        className="sr-only"
+                      />
+                      {opt.label}
+                    </label>
+                  );
+                })}
+              </div>
+            </fieldset>
             <div>
               <label htmlFor="new-order-total">Total (QAR)<Required /></label>
               <input
@@ -296,13 +362,15 @@ export default function NewOrderModal({ onClose, onSubmit }) {
                     <>
                       Edited manually.{' '}
                       <button type="button" onClick={resetToCalculatedTotal} className="text-[var(--primary)] hover:text-[var(--primary-hover)] font-medium underline">
-                        Use QAR {calculatedTotal}
+                        Use price list: QAR {calculatedTotal.toLocaleString('en-US')}
                       </button>
                     </>
+                  ) : hasStartingPrice ? (
+                    'Includes a starting price (Floor Mat / Seat Cover) — change the total if needed.'
                   ) : calculatedTotal > 0 ? (
-                    'Package + vehicle + add-on. You can change it.'
+                    'From the price list. Change it for a discount if needed.'
                   ) : (
-                    'Filled in from the package prices when available.'
+                    'Filled in from the price list once you pick a service and vehicle.'
                   )}
                 </p>
               )}
@@ -310,7 +378,7 @@ export default function NewOrderModal({ onClose, onSubmit }) {
 
             <div className="md:col-span-2 pt-3 mt-2 border-t border-gray-100">
               <label htmlFor="new-order-notes">Notes</label>
-              <textarea {...fieldProps('notes')} placeholder="Gate code, parking spot, special requests…" />
+              <textarea {...fieldProps('notes')} placeholder="Any special requests…" />
             </div>
           </div>
 

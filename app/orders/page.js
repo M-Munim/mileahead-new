@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
-  Search, Phone, X, MapPin, Clock, Droplets, CheckCircle,
-  RotateCcw, ClipboardList, Copy, ExternalLink, Send, Trash2, MessageCircle, Plus,
+  Search, Phone, X, Clock, Droplets, CheckCircle,
+  RotateCcw, ClipboardList, Copy, Send, Trash2, MessageCircle, Plus,
 } from 'lucide-react';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
@@ -11,20 +11,17 @@ import Toast from '../components/Toast';
 import ConfirmationDialog from '../components/ConfirmationDialog';
 import NewOrderModal from '../components/NewOrderModal';
 import { useAuth } from '../contexts/AuthContext';
-import { getMapsUrl, copyText, getWhatsAppUrl } from '../../utils/location';
+import { copyText, getWhatsAppUrl } from '../../utils/location';
+import { priceFor, formatQar, PAYMENT_METHODS } from '../../utils/priceList';
 
 // ─────────────────────────────────────────────────────────────
-// Order lifecycle model
+// Payment status (client revision: replaces Pending → Confirmed → Completed)
 // ─────────────────────────────────────────────────────────────
-// Client scope: three statuses only. Bookings the backend still reports as
-// "En Route" / "Arrived" are shown as Confirmed (in progress, not done yet).
-const STATUS_FLOW = ['pending', 'confirmed', 'completed'];
+const STATUSES = ['unpaid', 'paid'];
 
-// Status pill colors follow the app's existing palette (see RidesManagement.js).
 const STATUS_META = {
-  pending:   { label: 'Pending Confirmation', pill: 'bg-yellow-100 text-yellow-700' },
-  confirmed: { label: 'Confirmed',            pill: 'bg-blue-100 text-blue-700' },
-  completed: { label: 'Completed',            pill: 'bg-green-100 text-green-700' },
+  unpaid: { label: 'Unpaid', pill: 'bg-red-100 text-red-700' },
+  paid:   { label: 'Paid',   pill: 'bg-green-100 text-green-700' },
 };
 
 // Button tones use the app's design tokens.
@@ -34,45 +31,56 @@ const TONE = {
   ghost:   'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50',
 };
 
-// What the admin taps next for each status (one tap advances the order).
-const NEXT_ACTION = {
-  pending:   { next: 'confirmed', row: 'Confirm',        full: 'Confirm Order',     tone: 'primary' },
-  confirmed: { next: 'completed', row: 'Mark Completed', full: 'Mark as Completed', tone: 'green' },
+const TABS = [
+  { key: 'all',    label: 'All' },
+  { key: 'unpaid', label: 'Unpaid' },
+  { key: 'paid',   label: 'Paid' },
+];
+
+// ─────────────────────────────────────────────────────────────
+// Demo data (client request: dummy data only). Services, vehicles and prices
+// follow the Magic Track price list.
+// ─────────────────────────────────────────────────────────────
+const CLEANERS = {
+  rajesh: { name: 'Rajesh (Cleaner)', phone: '+974 3311 9900' },
+  mahesh: { name: 'Mahesh (Cleaner)', phone: '+974 3300 1122' },
+  suresh: { name: 'Suresh (Cleaner)', phone: '+974 3322 7788' },
 };
 
-
-const TABS = [
-  { key: 'all',       label: 'All' },
-  { key: 'pending',   label: 'Pending' },
-  { key: 'confirmed', label: 'Confirmed' },
-  { key: 'completed', label: 'Completed' },
-];
-
-// ─────────────────────────────────────────────────────────────
-// Demo data (persists locally as the admin clicks through statuses)
-// ─────────────────────────────────────────────────────────────
 const SAMPLE_ORDERS = [
-  // Pending (3)
-  { id: 'CW-1042', customer: { name: 'Jane Doe', phone: '+974 5511 2233' }, package: 'Classic Care', addOn: '—', vehicle: 'Sedan', numberPlate: 'QAR 1234', location: 'Al Waab St', time: 'Today, 4:00 PM', bookedAt: 'Today · 12:40 PM', total: 55, status: 'pending', cleaner: null, history: {} },
-  { id: 'CW-1045', customer: { name: 'Omar F.', phone: '+974 6633 1188' }, package: 'Premium Detail', addOn: '—', vehicle: 'SUV', numberPlate: 'QAR 5678', location: 'Lusail Marina', time: 'Today, 5:30 PM', bookedAt: 'Today · 1:05 PM', total: 90, status: 'pending', cleaner: null, history: {} },
-  { id: 'CW-1046', customer: { name: 'Aisha M.', phone: '+974 5599 2277' }, package: 'Quick Shine', addOn: '—', vehicle: 'Hatchback', numberPlate: 'QAR 9012', location: 'Al Sadd', time: 'Today, 6:00 PM', bookedAt: 'Today · 1:20 PM', total: 40, status: 'pending', cleaner: null, history: {} },
-
-  // Confirmed (7)
-  { id: 'CW-1041', customer: { name: 'Mohammed A.', phone: '+974 3344 5566' }, package: 'Premium Detail', addOn: '—', vehicle: 'SUV', numberPlate: 'QAR 3456', location: 'Villa 22, West Bay', time: 'Today, 3:30 PM', bookedAt: 'Today · 11:50 AM', total: 90, status: 'confirmed', cleaner: { name: 'Rajesh (Cleaner)', phone: '+974 3311 9900' }, history: { confirmed: '2:10 PM' } },
-  { id: 'CW-1040', customer: { name: 'Noor S.', phone: '+974 5544 8822' }, package: 'Classic Care', addOn: '—', vehicle: 'Sedan', numberPlate: 'QAR 7890', location: 'Al Gharrafa', time: 'Today, 3:00 PM', bookedAt: 'Today · 11:30 AM', total: 55, status: 'confirmed', cleaner: { name: 'Mahesh (Cleaner)', phone: '+974 3300 1122' }, history: { confirmed: '1:50 PM' } },
-  { id: 'CW-1039', customer: { name: 'Sara K.', phone: '+974 7788 9900' }, package: 'Quick Shine', addOn: 'Hygiene Plus', vehicle: '4x4 / Pickup', numberPlate: 'QAR 4567', location: 'The Pearl, Zone 66', time: 'Today, 2:15 PM', bookedAt: 'Today · 12:40 PM', total: 70, status: 'confirmed', cleaner: { name: 'Mahesh (Cleaner)', phone: '+974 3300 1122' }, history: { confirmed: '12:45 PM' } },
-  { id: 'CW-1038', customer: { name: 'Khalid B.', phone: '+974 6677 3344' }, package: 'Quick Shine + Hygiene', addOn: 'Hygiene Plus', vehicle: '4x4', numberPlate: 'QAR 2345', location: 'The Pearl', time: 'Today, 2:45 PM', bookedAt: 'Today · 11:10 AM', total: 70, status: 'confirmed', cleaner: { name: 'Suresh (Cleaner)', phone: '+974 3322 7788' }, history: { confirmed: '1:30 PM' } },
-  { id: 'CW-1037', customer: { name: 'Yusuf R.', phone: '+974 6611 4477' }, package: 'Classic Care', addOn: '—', vehicle: 'Van', numberPlate: 'QAR 0123', location: 'Al Sadd', time: 'Today, 1:00 PM', bookedAt: 'Today · 10:30 AM', total: 65, status: 'confirmed', cleaner: { name: 'Suresh (Cleaner)', phone: '+974 3322 7788' }, history: { confirmed: '11:45 AM' } },
-  { id: 'CW-1036', customer: { name: 'Hind A.', phone: '+974 5522 6611' }, package: 'Classic Care', addOn: '—', vehicle: 'Van', numberPlate: 'QAR 6789', location: 'Al Wakrah', time: 'Today, 2:30 PM', bookedAt: 'Today · 10:55 AM', total: 65, status: 'confirmed', cleaner: { name: 'Rajesh (Cleaner)', phone: '+974 3311 9900' }, history: { confirmed: '1:15 PM' } },
-  { id: 'CW-1035', customer: { name: 'Fahad Q.', phone: '+974 6611 2200' }, package: 'Premium Detail', addOn: '—', vehicle: 'SUV', numberPlate: 'QAR 8901', location: 'West Bay', time: 'Today, 1:45 PM', bookedAt: 'Today · 11:00 AM', total: 90, status: 'confirmed', cleaner: { name: 'Suresh (Cleaner)', phone: '+974 3322 7788' }, history: { confirmed: '12:30 PM' } },
-
-  // Completed (5)
-  { id: 'CW-0981', customer: { name: 'Layla H.', phone: '+974 5522 3311' }, package: 'Quick Shine', addOn: '—', vehicle: 'SUV', numberPlate: 'QAR 1357', location: 'Villa 22, West Bay', time: 'Sat, 12 Jul', bookedAt: 'Sat, 12 Jul · 9:10 AM', total: 60, status: 'completed', cleaner: { name: 'Mahesh (Cleaner)', phone: '+974 3300 1122' }, history: { confirmed: '9:20 AM', completed: '10:50 AM' } },
-  { id: 'CW-0980', customer: { name: 'Ahmed T.', phone: '+974 3300 7766' }, package: 'Premium Detail', addOn: '—', vehicle: 'Sedan', numberPlate: 'QAR 2468', location: 'Al Waab St', time: 'Sat, 12 Jul', bookedAt: 'Sat, 12 Jul · 8:40 AM', total: 85, status: 'completed', cleaner: { name: 'Rajesh (Cleaner)', phone: '+974 3311 9900' }, history: { confirmed: '8:50 AM', completed: '10:25 AM' } },
-  { id: 'CW-0979', customer: { name: 'Mariam D.', phone: '+974 5511 8899' }, package: 'Classic Care', addOn: '—', vehicle: '4x4', numberPlate: 'QAR 3691', location: 'Lusail', time: 'Fri, 11 Jul', bookedAt: 'Fri, 11 Jul · 3:15 PM', total: 60, status: 'completed', cleaner: { name: 'Suresh (Cleaner)', phone: '+974 3322 7788' }, history: { confirmed: '3:25 PM', completed: '4:45 PM' } },
-  { id: 'CW-0978', customer: { name: 'Ali H.', phone: '+974 6600 5511' }, package: 'Quick Shine + Hygiene', addOn: 'Hygiene Plus', vehicle: 'SUV', numberPlate: 'QAR 4820', location: 'The Pearl', time: 'Fri, 11 Jul', bookedAt: 'Fri, 11 Jul · 1:00 PM', total: 70, status: 'completed', cleaner: { name: 'Mahesh (Cleaner)', phone: '+974 3300 1122' }, history: { confirmed: '1:10 PM', completed: '2:40 PM' } },
-  { id: 'CW-0977', customer: { name: 'Reem N.', phone: '+974 5533 2244' }, package: 'Classic Care', addOn: '—', vehicle: 'Sedan', numberPlate: 'QAR 5931', location: 'Al Sadd', time: 'Thu, 10 Jul', bookedAt: 'Thu, 10 Jul · 11:20 AM', total: 55, status: 'completed', cleaner: { name: 'Rajesh (Cleaner)', phone: '+974 3311 9900' }, history: { confirmed: '11:30 AM', completed: '12:55 PM' } },
-];
+  // id, customer, phone, service, vehicle, extras, plate, discount, coupon serial, payment, status, time, booked, cleaner
+  ['CW-1046', 'Aisha M.',    '+974 5599 2277', 'Body Wash – In & Out',                'Sedan',           [],                                         '9012', '',               '',        'Fawran',         'unpaid', 'Today, 4:30 PM', 'Today · 4:22 PM',  null],
+  ['CW-1045', 'Omar F.',     '+974 6633 1188', 'Body Polishing',                      'SUV',             [],                                         '5678', 'Coupon',         'MT-2041', 'Paylater',       'unpaid', 'Today, 4:15 PM', 'Today · 4:05 PM',  'rajesh'],
+  ['CW-1044', 'Jane Doe',    '+974 5511 2233', 'Full Interior Cleaning',              'Sedan',           ['Floor Mat'],                              '1234', 'Loyalty Free',   '',        'Fawran',         'unpaid', 'Today, 3:50 PM', 'Today · 3:41 PM',  'mahesh'],
+  ['CW-1043', 'Khalid B.',   '+974 6677 3344', 'Paint Protection Film (PPF)',         'GMC / Large SUV', [],                                         '2345', 'Fleet Discount', '',        'Partner Credit', 'unpaid', 'Today, 2:30 PM', 'Today · 2:18 PM',  'suresh'],
+  ['CW-1042', 'Mohammed A.', '+974 3344 5566', 'Nano Ceramic Coating – Graphene Pro', 'SUV',             [],                                         '3456', 'Fleet Discount', '',        'Partner Credit', 'paid',   'Today, 1:40 PM', 'Today · 1:32 PM',  'rajesh'],
+  ['CW-1041', 'Noor S.',     '+974 5544 8822', 'Body Wash – In & Out',                '7-Seater',        ['Dashboard Cover'],                        '7890', '',               '',        'Fawran',         'paid',   'Today, 1:10 PM', 'Today · 1:02 PM',  'mahesh'],
+  ['CW-1040', 'Sara K.',     '+974 7788 9900', 'Glass Polish',                        'SUV',             [],                                         '4567', 'Coupon',         'MT-1987', 'Fawran',         'paid',   'Today, 12:20 PM', 'Today · 12:11 PM', 'suresh'],
+  ['CW-1039', 'Fahad Q.',    '+974 6611 2200', 'Interior & Exterior Polishing',       'SUV',             ['Seat Cover'],                             '8901', '',               '',        'Paylater',       'unpaid', 'Today, 11:30 AM', 'Today · 11:24 AM', 'rajesh'],
+  ['CW-1038', 'Hind A.',     '+974 5522 6611', 'Nano Ceramic Tint',                   'Sedan',           [],                                         '6789', 'Loyalty Free',   '',        'Fawran',         'paid',   'Today, 10:45 AM', 'Today · 10:38 AM', 'mahesh'],
+  ['CW-1037', 'Yusuf R.',    '+974 6611 4477', 'Body Wash – In & Out',                'SUV',             ['Steering Wheel Cover', 'Handrest Cover'], '0123', '',               '',        'Paylater',       'unpaid', 'Today, 10:00 AM', 'Today · 9:52 AM',  'suresh'],
+  ['CW-1036', 'Layla H.',    '+974 5522 3311', 'Paint Protection Film (PPF)',         'Crossover',       [],                                         '1357', '',               '',        'Fawran',         'paid',   'Sat, 12 Jul',    'Sat, 12 Jul · 9:10 AM',  'mahesh'],
+  ['CW-1035', 'Ahmed T.',    '+974 3300 7766', 'Full Interior Cleaning',              '7-Seater',        ['Side Door Cover'],                        '2468', 'Coupon',         'MT-1902', 'Paylater',       'paid',   'Sat, 12 Jul',    'Sat, 12 Jul · 8:40 AM',  'rajesh'],
+  ['CW-1034', 'Mariam D.',   '+974 5511 8899', 'Body Polishing',                      'Sedan',           [],                                         '3691', 'Fleet Discount', '',        'Partner Credit', 'paid',   'Fri, 11 Jul',    'Fri, 11 Jul · 3:15 PM',  'suresh'],
+  ['CW-1033', 'Ali H.',      '+974 6600 5511', '',                                    'SUV',             ['Roof / Ceiling Modification'],            '4820', '',               '',        'Fawran',         'unpaid', 'Fri, 11 Jul',    'Fri, 11 Jul · 1:00 PM',  null],
+  ['CW-1032', 'Reem N.',     '+974 5533 2244', 'Body Wash – In & Out',                'Sedan',           [],                                         '5931', 'Loyalty Free',   '',        'Fawran',         'paid',   'Thu, 10 Jul',    'Thu, 10 Jul · 11:20 AM', 'rajesh'],
+].map(([id, name, phone, service, vehicle, extras, numberPlate, discount, couponSerial, payment, status, time, bookedAt, cleaner]) => ({
+  id,
+  customer: { name, phone },
+  service,
+  vehicle,
+  extras,
+  numberPlate,
+  discount,
+  couponSerial,
+  payment,
+  status,
+  time,
+  bookedAt,
+  total: priceFor(service, vehicle, extras),
+  cleaner: cleaner ? CLEANERS[cleaner] : null,
+  notes: '',
+}));
 
 const getInitial = (name) => (name?.trim()?.[0] || '?').toUpperCase();
 const telHref = (phone) => `tel:${(phone || '').replace(/[^\d+]/g, '')}`;
@@ -84,101 +92,58 @@ const formatDateTime = (date, time) => {
   return date || time || 'N/A';
 };
 
+const serviceLabel = (order) => order.service || 'Extras only';
+const discountLabel = (order) =>
+  order.discount === 'Coupon' && order.couponSerial
+    ? `Coupon · ${order.couponSerial}`
+    : order.discount || '—';
+
 /** A manually entered order, in the same shape as the sample orders. */
 const buildLocalOrder = (values) => ({
   id: `CW-${String(Date.now()).slice(-6)}`,
   customer: { name: values.customerName, phone: values.phone },
-  package: values.packageName,
-  addOn: values.addOn || '—',
+  service: values.service,
   vehicle: values.vehicle,
+  extras: values.extras,
   numberPlate: values.numberPlate,
-  location: values.location,
-  notes: values.notes,
+  discount: values.discount,
+  couponSerial: values.couponSerial,
   payment: values.payment,
+  status: values.paymentStatus,
+  paidAt: values.paymentStatus === 'paid' ? timeNow() : undefined,
   time: formatDateTime(values.date, values.time),
   bookedAt: `Today · ${timeNow()}`,
   total: values.total,
-  status: 'pending',
   cleaner: null,
-  history: {},
+  notes: values.notes,
 });
-
-const orderMapsUrl = (order) =>
-  getMapsUrl({ lat: order.lat, lng: order.lng, address: order.location });
-
-/** Address + Google Maps pin, the way it's pasted to a cleaner. */
-const locationText = (order) => {
-  const url = orderMapsUrl(order);
-  return [order.location !== 'N/A' ? order.location : '', url].filter(Boolean).join('\n');
-};
-
-const hasValue = (v) => v && v !== '—' && v !== 'N/A';
 
 /** Job sheet sent to the cleaner (WhatsApp / copy-paste). */
 const buildCleanerMessage = (order) => {
-  const url = orderMapsUrl(order);
   const lines = [
     `*Magic Track — Car Wash Job #${order.id}*`,
     '',
     `Date & Time: ${order.time}`,
-    `Service: ${order.package}`,
-    hasValue(order.addOn) ? `Add-ons: ${order.addOn}` : null,
+    `Service: ${serviceLabel(order)}`,
+    order.extras?.length ? `Extras: ${order.extras.join(', ')}` : null,
     `Vehicle: ${order.vehicle}`,
     `Number Plate: ${order.numberPlate || '—'}`,
     '',
     `Customer: ${order.customer.name}`,
     `Contact: ${order.customer.phone}`,
-    `Location: ${order.location}`,
-    url ? `Map: ${url}` : null,
     '',
-    `Amount: QAR ${order.total}${order.payment ? ` (${order.payment})` : ''}`,
+    `Amount: ${formatQar(order.total)} (${order.payment} · ${STATUS_META[order.status].label})`,
+    order.discount ? `Discount: ${discountLabel(order)}` : null,
     order.notes ? `Notes: ${order.notes}` : null,
   ];
   return lines.filter((l) => l !== null).join('\n').replace(/\n{3,}/g, '\n\n');
 };
 
 // ─────────────────────────────────────────────────────────────
-// Location actions (copy / open in Maps)
-// ─────────────────────────────────────────────────────────────
-function LocationActions({ order, onCopy, size = 'sm' }) {
-  const url = orderMapsUrl(order);
-  const btn = size === 'sm'
-    ? 'w-7 h-7'
-    : 'w-8 h-8';
-  if (!url && !hasValue(order.location)) return null;
-  return (
-    <span className="inline-flex items-center gap-1 shrink-0">
-      <button
-        type="button"
-        onClick={(e) => { e.stopPropagation(); onCopy(order); }}
-        className={`${btn} flex items-center justify-center text-gray-500 border border-gray-200 hover:text-[var(--primary)] hover:border-[var(--primary)] transition-colors`}
-        title="Copy location"
-        aria-label={`Copy location for order ${order.id}`}
-      >
-        <Copy className="w-3.5 h-3.5" aria-hidden="true" />
-      </button>
-      {url && (
-        <a
-          href={url}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={(e) => e.stopPropagation()}
-          className={`${btn} flex items-center justify-center text-gray-500 border border-gray-200 hover:text-[var(--primary)] hover:border-[var(--primary)] transition-colors`}
-          title="Open in Google Maps"
-          aria-label={`Open location for order ${order.id} in Google Maps`}
-        >
-          <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" />
-        </a>
-      )}
-    </span>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────
 // Status pill
 // ─────────────────────────────────────────────────────────────
 function StatusPill({ status }) {
-  const meta = STATUS_META[status] || STATUS_META.pending;
+  const meta = STATUS_META[status] || STATUS_META.unpaid;
   return (
     <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${meta.pill}`}>
       {meta.label}
@@ -189,7 +154,7 @@ function StatusPill({ status }) {
 // ─────────────────────────────────────────────────────────────
 // Order detail drawer
 // ─────────────────────────────────────────────────────────────
-function OrderDrawer({ order, onClose, onAdvance, onCopyLocation, onCopyMessage, canDelete, onDelete }) {
+function OrderDrawer({ order, onClose, onTogglePaid, onCopyMessage, canDelete, onDelete }) {
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', onKey);
@@ -202,22 +167,16 @@ function OrderDrawer({ order, onClose, onAdvance, onCopyLocation, onCopyMessage,
 
   if (!order) return null;
 
-  const action = NEXT_ACTION[order.status];
-  const flowIndex = STATUS_FLOW.indexOf(order.status);
-
-  const steps = [
-    { key: 'confirmed', label: 'Confirmed' },
-    { key: 'completed', label: 'Service Completed' },
-  ];
-
+  const isPaid = order.status === 'paid';
   const kv = [
-    ['Package', order.package],
-    ['Add-on', order.addOn || '—'],
+    ['Service', serviceLabel(order)],
     ['Vehicle', order.vehicle],
+    ['Extras', order.extras?.length ? order.extras.join(', ') : '—'],
     ['Number Plate', order.numberPlate || '—'],
-    ['Slot', order.time],
-    ['Total', `QAR ${order.total}`],
-    ...(order.payment ? [['Payment', order.payment]] : []),
+    ['Date & Time', order.time],
+    ['Discount', discountLabel(order)],
+    ['Payment Method', order.payment],
+    ['Total', formatQar(order.total)],
     ...(order.notes ? [['Notes', order.notes]] : []),
   ];
   const cleanerMessage = buildCleanerMessage(order);
@@ -241,7 +200,10 @@ function OrderDrawer({ order, onClose, onAdvance, onCopyLocation, onCopyMessage,
         {/* Head */}
         <div className="flex items-start justify-between px-5 py-4 border-b border-gray-200">
           <div>
-            <div className="text-[15px] font-bold text-gray-900">#{order.id}</div>
+            <div className="flex items-center gap-2">
+              <span className="text-[15px] font-bold text-gray-900">#{order.id}</span>
+              <StatusPill status={order.status} />
+            </div>
             <div className="text-[11px] text-gray-500 mt-0.5">Booked {order.bookedAt}</div>
           </div>
           <button
@@ -278,19 +240,11 @@ function OrderDrawer({ order, onClose, onAdvance, onCopyLocation, onCopyMessage,
           <div className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold mt-4 mb-2">Order Details</div>
           <div>
             {kv.map(([k, v]) => (
-              <div key={k} className="flex justify-between text-[12px] py-1.5 border-b border-dashed border-gray-200 last:border-0">
-                <span className="text-gray-500">{k}</span>
+              <div key={k} className="flex justify-between gap-4 text-[12px] py-1.5 border-b border-dashed border-gray-200 last:border-0">
+                <span className="text-gray-500 shrink-0">{k}</span>
                 <span className="font-semibold text-gray-900 text-right">{v}</span>
               </div>
             ))}
-          </div>
-
-          {/* Location */}
-          <div className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold mt-4 mb-2">Location</div>
-          <div className="bg-gray-50 border border-gray-100 rounded-lg p-3 flex items-start gap-3">
-            <MapPin className="w-4 h-4 text-[var(--primary)] shrink-0 mt-0.5" aria-hidden="true" />
-            <div className="text-[12px] text-gray-900 font-medium flex-1 min-w-0 break-words">{order.location}</div>
-            <LocationActions order={order} onCopy={onCopyLocation} size="md" />
           </div>
 
           {/* Cleaner */}
@@ -314,34 +268,9 @@ function OrderDrawer({ order, onClose, onAdvance, onCopyLocation, onCopyMessage,
             </div>
           ) : (
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-[11.5px] text-yellow-700">
-              No cleaner assigned yet — call to assign one for this slot.
+              No cleaner assigned yet.
             </div>
           )}
-
-          {/* Progress */}
-          <div className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold mt-4 mb-1">Order Progress</div>
-          <div className="mt-1">
-            {steps.map((step, i) => {
-              const stepIndex = i + 1; // confirmed=1, completed=2 in STATUS_FLOW
-              const done = flowIndex >= stepIndex;
-              const now = flowIndex === stepIndex;
-              const ts = order.history?.[step.key];
-              return (
-                <div
-                  key={step.key}
-                  className={`flex items-center gap-2 text-[11.5px] py-1.5 ${done ? 'text-gray-900 font-semibold' : 'text-gray-500'}`}
-                >
-                  <span
-                    className={`w-2 h-2 rounded-full shrink-0 ${
-                      now ? 'bg-[var(--primary)] ring-4 ring-[var(--primary)]/15' : done ? 'bg-green-500' : 'bg-gray-300'
-                    }`}
-                    aria-hidden="true"
-                  />
-                  <span>{step.label}{ts ? ` — ${ts}` : ''}</span>
-                </div>
-              );
-            })}
-          </div>
 
           {/* Job sheet for the cleaner */}
           <div className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold mt-4 mb-2">Send to Cleaner</div>
@@ -357,7 +286,7 @@ function OrderDrawer({ order, onClose, onAdvance, onCopyLocation, onCopyMessage,
               <Copy className="w-3.5 h-3.5" aria-hidden="true" /> Copy Job
             </button>
             <a
-              href={getWhatsAppUrl(cleanerMessage, order.cleaner?.phone !== 'N/A' ? order.cleaner?.phone : '')}
+              href={getWhatsAppUrl(cleanerMessage, order.cleaner?.phone || '')}
               target="_blank"
               rel="noopener noreferrer"
               className="py-2 text-[12px] font-semibold flex items-center justify-center gap-1.5 bg-green-600 text-white hover:bg-green-700 transition-colors"
@@ -366,7 +295,7 @@ function OrderDrawer({ order, onClose, onAdvance, onCopyLocation, onCopyMessage,
             </a>
           </div>
           <p className="text-[10px] text-gray-500 mt-1.5">
-            {order.cleaner && order.cleaner.phone !== 'N/A'
+            {order.cleaner
               ? `WhatsApp opens a chat with ${order.cleaner.name}.`
               : 'No cleaner assigned — WhatsApp will ask who to send it to.'}
           </p>
@@ -384,20 +313,26 @@ function OrderDrawer({ order, onClose, onAdvance, onCopyLocation, onCopyMessage,
 
         {/* Actions */}
         <div className="px-5 py-4 border-t border-gray-200 flex flex-col gap-2">
-          {action ? (
+          {isPaid ? (
             <>
+              <div className="w-full py-3 text-[13px] font-semibold flex items-center justify-center gap-2 bg-green-50 text-green-700 rounded">
+                <CheckCircle className="w-4 h-4" aria-hidden="true" /> Paid{order.paidAt ? ` at ${order.paidAt}` : ''}
+              </div>
               <button
-                onClick={() => onAdvance(order)}
-                className={`w-full py-3 text-[13px] font-semibold flex items-center justify-center gap-2 transition-colors ${TONE[action.tone]}`}
+                type="button"
+                onClick={() => onTogglePaid(order)}
+                className="text-[12px] text-gray-500 hover:text-gray-800 underline"
               >
-                <CheckCircle className="w-4 h-4" aria-hidden="true" />
-                {action.full}
+                Mark as Unpaid
               </button>
             </>
           ) : (
-            <div className="w-full py-3 text-[13px] font-semibold flex items-center justify-center gap-2 bg-green-50 text-green-700 rounded">
-              <CheckCircle className="w-4 h-4" aria-hidden="true" /> Service Completed
-            </div>
+            <button
+              onClick={() => onTogglePaid(order)}
+              className={`w-full py-3 text-[13px] font-semibold flex items-center justify-center gap-2 transition-colors ${TONE.green}`}
+            >
+              <CheckCircle className="w-4 h-4" aria-hidden="true" /> Mark as Paid
+            </button>
           )}
           <a
             href={telHref(order.customer.phone)}
@@ -433,7 +368,7 @@ export default function OrdersPage() {
 
   const counts = useMemo(() => {
     const c = { all: orders.length };
-    for (const s of STATUS_FLOW) c[s] = 0;
+    for (const s of STATUSES) c[s] = 0;
     for (const o of orders) c[o.status] = (c[o.status] || 0) + 1;
     return c;
   }, [orders]);
@@ -443,14 +378,10 @@ export default function OrdersPage() {
     return orders.filter((o) => {
       if (activeTab !== 'all' && o.status !== activeTab) return false;
       if (!q) return true;
-      return (
-        o.id.toLowerCase().includes(q) ||
-        o.customer.name.toLowerCase().includes(q) ||
-        o.customer.phone.toLowerCase().includes(q) ||
-        o.location.toLowerCase().includes(q) ||
-        o.package.toLowerCase().includes(q) ||
-        (o.numberPlate || '').toLowerCase().includes(q)
-      );
+      return [
+        o.id, o.customer.name, o.customer.phone, serviceLabel(o), o.vehicle,
+        o.numberPlate, o.discount, o.couponSerial, o.payment,
+      ].some((v) => (v || '').toLowerCase().includes(q));
     });
   }, [orders, activeTab, query]);
 
@@ -481,13 +412,6 @@ export default function OrdersPage() {
       return next;
     });
   }, [allVisibleChecked, visibleOrders]);
-
-  const handleCopyLocation = useCallback(async (order) => {
-    const ok = await copyText(locationText(order));
-    setToast(ok
-      ? { message: `Location for #${order.id} copied`, type: 'success' }
-      : { message: 'Could not copy — please copy it manually.', type: 'error' });
-  }, []);
 
   const handleCopyMessage = useCallback(async (list) => {
     const items = Array.isArray(list) ? list : [list];
@@ -521,7 +445,7 @@ export default function OrdersPage() {
     setToast({ message: ids.length === 1 ? `Order #${ids[0]} deleted` : `${ids.length} orders deleted`, type: 'success' });
   }, [pendingDelete, canDelete, selectedId]);
 
-  // Manual entry: the new order goes to the top of the list as Pending.
+  // Manual entry: the new order goes to the top of the list.
   const handleCreateOrder = useCallback((values) => {
     const newOrder = buildLocalOrder(values);
     setOrders((prev) => [newOrder, ...prev]);
@@ -540,18 +464,22 @@ export default function OrdersPage() {
     setToast({ message: 'Filters reset and sample orders restored', type: 'info' });
   }, []);
 
-  const advanceOrder = useCallback((order) => {
-    const action = NEXT_ACTION[order.status];
-    if (!action) return;
-    const sentAt = timeNow();
+  // Payment method can be changed straight from the table.
+  const updatePayment = useCallback((order, payment) => {
+    setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, payment } : o)));
+    setToast({ message: `#${order.id} payment method: ${payment}`, type: 'success' });
+  }, []);
+
+  const togglePaid = useCallback((order) => {
+    const next = order.status === 'paid' ? 'unpaid' : 'paid';
     setOrders((prev) =>
       prev.map((o) =>
         o.id === order.id
-          ? { ...o, status: action.next, history: { ...o.history, [action.next]: sentAt } }
+          ? { ...o, status: next, paidAt: next === 'paid' ? timeNow() : undefined }
           : o
       )
     );
-    setToast({ message: `#${order.id} → ${STATUS_META[action.next].label}`, type: 'success' });
+    setToast({ message: `#${order.id} marked as ${STATUS_META[next].label}`, type: 'success' });
   }, []);
 
   return (
@@ -578,7 +506,7 @@ export default function OrdersPage() {
                   </div>
                   <div>
                     <h1 className="text-base font-semibold text-gray-900">Orders</h1>
-                    <p className="text-xs text-gray-500">Manage bookings and update status as cleaners report in</p>
+                    <p className="text-xs text-gray-500">Enter each customer at the center and track who has paid</p>
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -669,7 +597,7 @@ export default function OrdersPage() {
               {/* Table */}
               <div className="p-4 sm:p-5">
                 <div className="overflow-x-auto border border-gray-200 rounded-lg">
-                  <table className="w-full border-collapse min-w-[960px]">
+                  <table className="w-full border-collapse min-w-[1180px]">
                     <thead>
                       <tr>
                         <th className="bg-gray-50 pl-3.5 pr-1 py-2.5 border-b border-gray-200 w-8">
@@ -681,10 +609,10 @@ export default function OrdersPage() {
                             aria-label="Select all orders in this view"
                           />
                         </th>
-                        {['Order', 'Customer', 'Service', 'Number Plate', 'Location', 'Time', 'Status', ''].map((h, i) => (
+                        {['Order', 'Customer', 'Service', 'Number Plate', 'Discount', 'Payment Method', 'Total', 'Time', 'Status', ''].map((h, i) => (
                           <th
                             key={i}
-                            className="text-left text-[10px] uppercase tracking-wide text-gray-500 font-semibold bg-gray-50 px-3.5 py-2.5 border-b border-gray-200"
+                            className="text-left text-[10px] uppercase tracking-wide text-gray-500 font-semibold bg-gray-50 px-3.5 py-2.5 border-b border-gray-200 whitespace-nowrap"
                           >
                             {h}
                           </th>
@@ -692,68 +620,79 @@ export default function OrdersPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {visibleOrders.map((o) => {
-                        const action = NEXT_ACTION[o.status];
-                        return (
-                          <tr
-                            key={o.id}
-                            onClick={() => setSelectedId(o.id)}
-                            className="cursor-pointer hover:bg-gray-50 border-b border-gray-100 last:border-0"
-                          >
-                            <td className="pl-3.5 pr-1 py-3" onClick={(e) => e.stopPropagation()}>
-                              <input
-                                type="checkbox"
-                                checked={checkedIds.has(o.id)}
-                                onChange={() => toggleChecked(o.id)}
-                                className="w-4 h-4 accent-[var(--primary)]"
-                                aria-label={`Select order ${o.id}`}
-                              />
-                            </td>
-                            <td className="px-3.5 py-3 text-sm font-semibold text-gray-900 whitespace-nowrap">#{o.id}</td>
-                            <td className="px-3.5 py-3">
-                              <div className="text-sm font-medium text-gray-900">{o.customer.name}</div>
-                              <div className="text-[11px] text-gray-500">{o.customer.phone}</div>
-                            </td>
-                            <td className="px-3.5 py-3 text-sm text-gray-700 whitespace-nowrap">
-                              {o.package} <span className="text-gray-400">· {o.vehicle}</span>
-                            </td>
-                            <td className="px-3.5 py-3 text-sm text-gray-700 whitespace-nowrap font-medium">{o.numberPlate || '—'}</td>
-                            <td className="px-3.5 py-3 text-sm text-gray-700">
-                              <div className="flex items-center gap-2">
-                                <span className="max-w-[220px] truncate" title={o.location}>{o.location}</span>
-                                <LocationActions order={o} onCopy={handleCopyLocation} />
+                      {visibleOrders.map((o) => (
+                        <tr
+                          key={o.id}
+                          onClick={() => setSelectedId(o.id)}
+                          className="cursor-pointer hover:bg-gray-50 border-b border-gray-100 last:border-0"
+                        >
+                          <td className="pl-3.5 pr-1 py-3" onClick={(e) => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              checked={checkedIds.has(o.id)}
+                              onChange={() => toggleChecked(o.id)}
+                              className="w-4 h-4 accent-[var(--primary)]"
+                              aria-label={`Select order ${o.id}`}
+                            />
+                          </td>
+                          <td className="px-3.5 py-3 text-sm font-semibold text-gray-900 whitespace-nowrap">#{o.id}</td>
+                          <td className="px-3.5 py-3">
+                            <div className="text-sm font-medium text-gray-900 whitespace-nowrap">{o.customer.name}</div>
+                            <div className="text-[11px] text-gray-500 whitespace-nowrap">{o.customer.phone}</div>
+                          </td>
+                          <td className="px-3.5 py-3 text-sm text-gray-700">
+                            <div className="max-w-[240px] truncate" title={`${serviceLabel(o)} · ${o.vehicle}`}>
+                              {serviceLabel(o)} <span className="text-gray-400">· {o.vehicle}</span>
+                            </div>
+                            {o.extras?.length > 0 && (
+                              <div className="text-[11px] text-gray-500 max-w-[240px] truncate" title={o.extras.join(', ')}>
+                                + {o.extras.join(', ')}
                               </div>
-                            </td>
-                            <td className="px-3.5 py-3 text-sm text-gray-700 whitespace-nowrap">{o.time}</td>
-                            <td className="px-3.5 py-3"><StatusPill status={o.status} /></td>
-                            <td className="px-3.5 py-3 text-right whitespace-nowrap">
+                            )}
+                          </td>
+                          <td className="px-3.5 py-3 text-sm text-gray-700 whitespace-nowrap font-medium">{o.numberPlate || '—'}</td>
+                          <td className="px-3.5 py-3 text-sm text-gray-700 whitespace-nowrap">{discountLabel(o)}</td>
+                          <td className="px-3.5 py-3" onClick={(e) => e.stopPropagation()}>
+                            <select
+                              value={o.payment}
+                              onChange={(e) => updatePayment(o, e.target.value)}
+                              className="text-[13px] min-w-[140px]"
+                              style={{ paddingTop: 4, paddingBottom: 4 }}
+                              aria-label={`Payment method for order ${o.id}`}
+                            >
+                              {PAYMENT_METHODS.map((p) => <option key={p}>{p}</option>)}
+                            </select>
+                          </td>
+                          <td className="px-3.5 py-3 text-sm font-semibold text-gray-900 whitespace-nowrap">{formatQar(o.total)}</td>
+                          <td className="px-3.5 py-3 text-sm text-gray-700 whitespace-nowrap">{o.time}</td>
+                          <td className="px-3.5 py-3"><StatusPill status={o.status} /></td>
+                          <td className="px-3.5 py-3 text-right whitespace-nowrap">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleCopyMessage(o); }}
+                              className="inline-flex items-center justify-center w-7 h-7 mr-1.5 align-middle text-gray-500 border border-gray-200 hover:text-[var(--primary)] hover:border-[var(--primary)] transition-colors"
+                              title="Copy job details for the cleaner"
+                              aria-label={`Copy job details for order ${o.id}`}
+                            >
+                              <Send className="w-3.5 h-3.5" aria-hidden="true" />
+                            </button>
+                            {o.status === 'unpaid' ? (
                               <button
-                                onClick={(e) => { e.stopPropagation(); handleCopyMessage(o); }}
-                                className="inline-flex items-center justify-center w-7 h-7 mr-1.5 align-middle text-gray-500 border border-gray-200 hover:text-[var(--primary)] hover:border-[var(--primary)] transition-colors"
-                                title="Copy job details for the cleaner"
-                                aria-label={`Copy job details for order ${o.id}`}
+                                onClick={(e) => { e.stopPropagation(); togglePaid(o); }}
+                                className={`text-xs font-medium px-3 py-1.5 transition-colors ${TONE.green}`}
                               >
-                                <Send className="w-3.5 h-3.5" aria-hidden="true" />
+                                Mark Paid
                               </button>
-                              {action ? (
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); advanceOrder(o); }}
-                                  className={`text-xs font-medium px-3 py-1.5 transition-colors ${TONE[action.tone]}`}
-                                >
-                                  {action.row}
-                                </button>
-                              ) : (
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); setSelectedId(o.id); }}
-                                  className={`text-xs font-medium px-3 py-1.5 transition-colors ${TONE.ghost}`}
-                                >
-                                  View
-                                </button>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
+                            ) : (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setSelectedId(o.id); }}
+                                className={`text-xs font-medium px-3 py-1.5 transition-colors ${TONE.ghost}`}
+                              >
+                                View
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
 
@@ -767,7 +706,7 @@ export default function OrdersPage() {
 
                 <div className="flex items-center gap-1.5 text-[11px] text-gray-400 mt-3">
                   <Clock className="w-3.5 h-3.5" aria-hidden="true" />
-                  Tap a row to open the order · one tap advances the status · tick orders to send them to a cleaner{canDelete ? ' or delete them' : ''}
+                  Tap a row to open the order · Mark Paid when the customer pays · tick orders to send them to a cleaner{canDelete ? ' or delete them' : ''}
                 </div>
               </div>
             </div>
@@ -779,8 +718,7 @@ export default function OrdersPage() {
         <OrderDrawer
           order={selectedOrder}
           onClose={() => setSelectedId(null)}
-          onAdvance={advanceOrder}
-          onCopyLocation={handleCopyLocation}
+          onTogglePaid={togglePaid}
           onCopyMessage={handleCopyMessage}
           canDelete={canDelete}
           onDelete={setPendingDelete}

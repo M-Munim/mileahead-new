@@ -152,13 +152,16 @@ textarea {
   resize: vertical;
 }
 
-/* ── Form labels ── */
-label {
-  font-size: 0.8125rem;
-  font-weight: 500;
-  color: #374151;
-  display: block;
-  margin-bottom: 0.375rem;
+/* ── Form labels ──
+   In the base layer so Tailwind classes on a label (flex, colours…) win. */
+@layer base {
+  label {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: #374151;
+    display: block;
+    margin-bottom: 0.375rem;
+  }
 }
 
 /* ── Form section dividers ── */

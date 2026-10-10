@@ -6,6 +6,7 @@ import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import Toast from '../components/Toast';
 import { useFocusTrap } from '@/app/hooks/useFocusTrap';
+import { DISCOUNTS, PAYMENT_METHODS } from '../../utils/priceList';
 
 // ─────────────────────────────────────────────────────────────
 // Customer types (segments)
@@ -33,34 +34,32 @@ const STATUS_PILL = {
   Unpaid: 'bg-red-100 text-red-700 hover:bg-red-200',
 };
 
-const DISCOUNTS = ['Loyalty Free', 'Fleet Discount', 'Coupon'];
-const PAYMENT_METHODS = ['Fawran', 'Paylater', 'Partner Credit'];
-
 const PROMO_TEMPLATES = [
   { label: 'Weekend offer',  text: 'Hi {name}, enjoy 20% off any wash this weekend at Magic Track. Book now!' },
   { label: 'We miss you',    text: 'Hi {name}, we miss you! Come back this week and get a free interior freshener with your wash.' },
-  { label: 'Loyalty reward', text: 'Hi {name}, thank you for being a loyal customer. Your next Premium Detail is 15% off.' },
+  { label: 'Loyalty reward', text: 'Hi {name}, thank you for being a loyal customer. Your next Body Polishing is 15% off.' },
 ];
 
 // ─────────────────────────────────────────────────────────────
 // Dummy data (client request: no real data at this stage)
 // ─────────────────────────────────────────────────────────────
+// Services and vehicle types follow the Magic Track price list (utils/priceList.js).
 const SAMPLE_CUSTOMERS = [
-  ['Mohammed A.', '+974 3344 5566', 'QAR 3456', 'SUV',          'Premium Detail',        'Fleet Discount', 8, 5,   2640, 'Partner Credit', 'Paid'],
-  ['Jane Doe',    '+974 5511 2233', 'QAR 1234', 'Sedan',        'Classic Care',          'Loyalty Free',   6, 3,   720,  'Fawran',         'Paid'],
-  ['Khalid B.',   '+974 6677 3344', 'QAR 2345', '4x4 / Pickup', 'Quick Shine + Hygiene', 'Coupon',         5, 9,   610,  'Paylater',       'Unpaid'],
-  ['Noor S.',     '+974 5544 8822', 'QAR 7890', 'Sedan',        'Classic Care',          'Loyalty Free',   4, 12,  480,  'Fawran',         'Paid'],
-  ['Sara K.',     '+974 7788 9900', 'QAR 4567', '4x4 / Pickup', 'Quick Shine',           'Coupon',         3, 20,  330,  'Fawran',         'Paid'],
-  ['Fahad Q.',    '+974 6611 2200', 'QAR 8901', 'SUV',          'Premium Detail',        'Fleet Discount', 2, 35,  540,  'Partner Credit', 'Paid'],
-  ['Hind A.',     '+974 5522 6611', 'QAR 6789', 'Van',          'Classic Care',          'Coupon',         2, 48,  260,  'Paylater',       'Unpaid'],
-  ['Omar F.',     '+974 6633 1188', 'QAR 5678', 'SUV',          'Premium Detail',        'Loyalty Free',   1, 4,   280,  'Fawran',         'Paid'],
-  ['Aisha M.',    '+974 5599 2277', 'QAR 9012', 'Hatchback',    'Quick Shine',           'Coupon',         1, 10,  90,   'Paylater',       'Paid'],
-  ['Yusuf R.',    '+974 6611 4477', 'QAR 0123', 'Van',          'Classic Care',          'Fleet Discount', 1, 45,  130,  'Partner Credit', 'Unpaid'],
-  ['Layla H.',    '+974 5522 3311', 'QAR 1357', 'SUV',          'Quick Shine',           'Loyalty Free',   3, 75,  300,  'Fawran',         'Paid'],
-  ['Ahmed T.',    '+974 3300 7766', 'QAR 2468', 'Sedan',        'Premium Detail',        'Coupon',         1, 92,  150,  'Paylater',       'Unpaid'],
-  ['Mariam D.',   '+974 5511 8899', 'QAR 3691', '4x4 / Pickup', 'Classic Care',          'Fleet Discount', 5, 80,  700,  'Partner Credit', 'Paid'],
-  ['Ali H.',      '+974 6600 5511', 'QAR 4820', 'SUV',          'Quick Shine + Hygiene', 'Loyalty Free',   1, 120, 110,  'Fawran',         'Paid'],
-  ['Reem N.',     '+974 5533 2244', 'QAR 5931', 'Sedan',        'Classic Care',          'Coupon',         2, 66,  230,  'Paylater',       'Unpaid'],
+  ['Mohammed A.', '+974 3344 5566', '3456', 'SUV',             'Body Wash – In & Out',          'Fleet Discount', 8, 5,   2640, 'Partner Credit', 'Paid'],
+  ['Jane Doe',    '+974 5511 2233', '1234', 'Sedan',           'Body Wash – In & Out',          'Loyalty Free',   6, 3,   720,  'Fawran',         'Paid'],
+  ['Khalid B.',   '+974 6677 3344', '2345', '7-Seater',        'Full Interior Cleaning',        'Coupon',         5, 9,   1610, 'Paylater',       'Unpaid'],
+  ['Noor S.',     '+974 5544 8822', '7890', 'Sedan',           'Glass Polish',                  'Loyalty Free',   4, 12,  480,  'Fawran',         'Paid'],
+  ['Sara K.',     '+974 7788 9900', '4567', 'SUV',             'Body Wash – In & Out',          'Coupon',         3, 20,  455,  'Fawran',         'Paid'],
+  ['Fahad Q.',    '+974 6611 2200', '8901', 'SUV',             'Body Polishing',                'Fleet Discount', 2, 35,  700,  'Partner Credit', 'Paid'],
+  ['Hind A.',     '+974 5522 6611', '6789', 'Crossover',       'Paint Protection Film (PPF)',   'Coupon',         2, 48,  7035, 'Paylater',       'Unpaid'],
+  ['Omar F.',     '+974 6633 1188', '5678', 'SUV',             'Nano Ceramic Tint',             'Loyalty Free',   1, 4,   1200, 'Fawran',         'Paid'],
+  ['Aisha M.',    '+974 5599 2277', '9012', 'Sedan',           'Body Wash – In & Out',          'Coupon',         1, 10,  30,   'Paylater',       'Paid'],
+  ['Yusuf R.',    '+974 6611 4477', '0123', '7-Seater',        'Body Wash – In & Out',          'Fleet Discount', 1, 45,  40,   'Partner Credit', 'Unpaid'],
+  ['Layla H.',    '+974 5522 3311', '1357', 'SUV',             'Glass Polish',                  'Loyalty Free',   3, 75,  540,  'Fawran',         'Paid'],
+  ['Ahmed T.',    '+974 3300 7766', '2468', 'Sedan',           'Full Interior Cleaning',        'Coupon',         1, 92,  280,  'Paylater',       'Unpaid'],
+  ['Mariam D.',   '+974 5511 8899', '3691', 'GMC / Large SUV', 'Paint Protection Film (PPF)',   'Fleet Discount', 5, 80,  9600, 'Partner Credit', 'Paid'],
+  ['Ali H.',      '+974 6600 5511', '4820', 'SUV',             'Interior & Exterior Polishing', 'Loyalty Free',   1, 120, 650,  'Fawran',         'Paid'],
+  ['Reem N.',     '+974 5533 2244', '5931', 'Sedan',           'Body Wash – In & Out',          'Coupon',         2, 66,  60,   'Paylater',       'Unpaid'],
 ].map(([name, phone, plate, vehicle, service, discount, visits, daysSinceVisit, spent, payment, status], i) => {
   const customer = { id: `C-${i + 1}`, name, phone, plate, vehicle, service, discount, visits, daysSinceVisit, spent, payment, status };
   return { ...customer, segment: getSegment(customer) };
