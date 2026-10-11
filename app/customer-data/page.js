@@ -6,7 +6,7 @@ import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import Toast from '../components/Toast';
 import { useFocusTrap } from '@/app/hooks/useFocusTrap';
-import { DISCOUNTS, PAYMENT_METHODS } from '../../utils/priceList';
+import { DISCOUNTS, PAYMENT_TYPES } from '../../utils/priceList';
 
 // ─────────────────────────────────────────────────────────────
 // Customer types (segments)
@@ -110,7 +110,7 @@ const firstName = (name) => (name || '').split(' ')[0] || 'Customer';
 
 /** CSV that opens cleanly in Excel (BOM + quoted cells). */
 function downloadCsv(list) {
-  const header = ['Name', 'Phone', 'Plate', 'Vehicle', 'Service', 'Discount', 'Visits', 'Days since last visit', 'Spent (QAR)', 'Payment method', 'Status', 'Type'];
+  const header = ['Name', 'Phone', 'Plate', 'Vehicle', 'Service', 'Discount', 'Visits', 'Days since last visit', 'Spent (QAR)', 'Payment type', 'Status', 'Type'];
   const rows = list.map((c) => [c.name, c.phone, c.plate, c.vehicle, c.service, c.discount, c.visits, c.daysSinceVisit, c.spent, c.payment, c.status, c.segment]);
   const csv = [header, ...rows]
     .map((row) => row.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','))
@@ -410,7 +410,7 @@ export default function CustomerDataPage() {
                 <FilterSelect id="f-service" label="Service" value={filters.service} onChange={setFilter('service')} options={SERVICES} />
                 <FilterSelect id="f-vehicle" label="Vehicle type" value={filters.vehicle} onChange={setFilter('vehicle')} options={VEHICLES} />
                 <FilterSelect id="f-discount" label="Discount" value={filters.discount} onChange={setFilter('discount')} options={DISCOUNTS} />
-                <FilterSelect id="f-payment" label="Payment method" value={filters.payment} onChange={setFilter('payment')} options={PAYMENT_METHODS} />
+                <FilterSelect id="f-payment" label="Payment type" value={filters.payment} onChange={setFilter('payment')} options={PAYMENT_TYPES} />
                 <FilterSelect id="f-status" label="Status" value={filters.status} onChange={setFilter('status')} options={['Paid', 'Unpaid']} />
                 <FilterSelect
                   id="f-spent" label="Total spent" value={filters.spent} onChange={setFilter('spent')} allLabel="Any"
@@ -470,7 +470,7 @@ export default function CustomerDataPage() {
                             aria-label="Select all customers shown"
                           />
                         </th>
-                        {['Customer', 'Phone', 'Plate', 'Vehicle', 'Favourite service', 'Discount', 'Visits', 'Last visit', 'Spent (QAR)', 'Payment method', 'Status', 'Type'].map((h) => (
+                        {['Customer', 'Phone', 'Plate', 'Vehicle', 'Favourite service', 'Discount', 'Visits', 'Last visit', 'Spent (QAR)', 'Payment type', 'Status', 'Type'].map((h) => (
                           <th key={h} className="text-left text-[10px] uppercase tracking-wide text-gray-500 font-semibold bg-gray-50 px-3 py-2.5 border-b border-gray-200 whitespace-nowrap">
                             {h}
                           </th>
@@ -516,9 +516,9 @@ export default function CustomerDataPage() {
                               onChange={(e) => updateCustomer(c.id, { payment: e.target.value })}
                               className="text-[13px] min-w-[140px]"
                               style={{ paddingTop: 4, paddingBottom: 4 }}
-                              aria-label={`Payment method for ${c.name}`}
+                              aria-label={`Payment type for ${c.name}`}
                             >
-                              {PAYMENT_METHODS.map((p) => <option key={p}>{p}</option>)}
+                              {PAYMENT_TYPES.map((p) => <option key={p}>{p}</option>)}
                             </select>
                           </td>
                           <td className="px-3 py-3">
@@ -549,7 +549,7 @@ export default function CustomerDataPage() {
                   )}
                 </div>
                 <p className="text-[11px] text-gray-400 mt-3">
-                  Change a discount or payment method from the list · click Paid / Unpaid to switch it · tick customers to send them a promotion
+                  Change a discount or payment type from the list · click Paid / Unpaid to switch it · tick customers to send them a promotion
                 </p>
               </div>
             </div>

@@ -4,14 +4,15 @@ import { useState, useEffect, useMemo } from 'react';
 import { Loader, X, User, Droplets, Clock, CreditCard, Tag, AlertCircle } from 'lucide-react';
 import { useFocusTrap } from '@/app/hooks/useFocusTrap';
 import {
-  SERVICE_GROUPS, EXTRAS, DISCOUNTS, PAYMENT_METHODS,
-  vehiclesForService, servicePrice, priceFor,
+  SERVICE_GROUPS, EXTRAS, OTHER_SERVICES_TITLE, DISCOUNTS, PAYMENT_METHODS, PAYMENT_TYPES, COUPON_RATE,
+  vehiclesForService, servicePrice, priceFor, applyDiscount, couponApplies,
 } from '../../utils/priceList';
 
 /**
  * Manual order entry — the person running the car wash center enters each
- * customer who comes in. Services, vehicle types and extras follow the Magic
- * Track price list; the total is suggested from it and stays editable.
+ * customer who comes in. Services, vehicle types and other services follow the
+ * Magic Track price list; the total is suggested from it (a coupon takes 50% off)
+ * and stays editable.
  * Dummy data only (client request): nothing is sent to the API.
  *
  * The modal only collects and validates. `onSubmit(values)` adds the order.
@@ -39,7 +40,8 @@ const EMPTY_FORM = {
   time: '',
   discount: '',
   couponSerial: '',
-  payment: '',
+  paymentMethod: '',
+  paymentType: '',
   paymentStatus: 'unpaid',
   notes: '',
   total: '',
@@ -78,10 +80,12 @@ export default function NewOrderModal({ onClose, onSubmit }) {
   }, []);
 
   const vehicleOptions = vehiclesForService(form.service);
-  const calculatedTotal = useMemo(
+  const subtotal = useMemo(
     () => priceFor(form.service, form.vehicle, form.extras),
     [form.service, form.vehicle, form.extras]
   );
+  const couponOn = couponApplies(form.discount, form.couponSerial);
+  const calculatedTotal = applyDiscount(subtotal, form.discount, form.couponSerial);
   const totalValue = priceTouched ? form.total : (calculatedTotal > 0 ? String(calculatedTotal) : '');
   const hasStartingPrice = form.extras.some((name) => EXTRAS.find((e) => e.name === name)?.from);
 
@@ -128,12 +132,13 @@ export default function NewOrderModal({ onClose, onSubmit }) {
     if (!values.customerName) next.customerName = 'Customer name is required';
     if (!values.phone) next.phone = 'Phone number is required';
     else if (values.phone.replace(/\D/g, '').length < 7) next.phone = 'Enter a valid phone number';
-    if (!values.service && values.extras.length === 0) next.service = 'Choose a service or at least one extra';
+    if (!values.service && values.extras.length === 0) next.service = 'Choose a service or at least one other service';
     if (!values.vehicle) next.vehicle = 'Vehicle type is required';
     if (!values.date) next.date = 'Date is required';
     if (!values.time) next.time = 'Time is required';
     if (values.discount === 'Coupon' && !values.couponSerial) next.couponSerial = 'Coupon serial number is required';
-    if (!values.payment) next.payment = 'Payment method is required';
+    if (!values.paymentMethod) next.paymentMethod = 'Payment method is required';
+    if (!values.paymentType) next.paymentType = 'Payment type is required';
     if (totalValue === '' || !Number.isFinite(Number(totalValue)) || Number(totalValue) < 0) {
       next.total = 'Enter a valid total of 0 or more';
     }
@@ -154,7 +159,7 @@ export default function NewOrderModal({ onClose, onSubmit }) {
     setSaving(true);
     setSubmitError('');
     try {
-      await onSubmit({ ...values, total: Number(totalValue) });
+      await onSubmit({ ...values, subtotal, total: Number(totalValue) });
     } catch (err) {
       console.error('Create car wash order error', err);
       setSubmitError(err?.message || 'Could not create the order. Please try again.');
@@ -223,7 +228,7 @@ export default function NewOrderModal({ onClose, onSubmit }) {
               </select>
               <FieldError id="new-order-service-error" message={errors.service} />
               {!errors.service && (
-                <p className="mt-1 text-[11px] text-gray-500">Leave empty if the customer only wants extras.</p>
+                <p className="mt-1 text-[11px] text-gray-500">Leave empty if the customer only wants other services.</p>
               )}
             </div>
             <div>
@@ -240,7 +245,7 @@ export default function NewOrderModal({ onClose, onSubmit }) {
               <FieldError id="new-order-vehicle-error" message={errors.vehicle} />
             </div>
             <div className="md:col-span-2">
-              <span className="block text-[13px] font-medium text-gray-700 mb-1.5">Upholstery & Interior Extras</span>
+              <span className="block text-[13px] font-medium text-gray-700 mb-1.5">{OTHER_SERVICES_TITLE}</span>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {EXTRAS.map((extra) => {
                   const checked = form.extras.includes(extra.name);
@@ -298,18 +303,31 @@ export default function NewOrderModal({ onClose, onSubmit }) {
                 <label htmlFor="new-order-couponSerial">Coupon Serial Number<Required /></label>
                 <input {...fieldProps('couponSerial')} placeholder="e.g. MT-2041" autoComplete="off" />
                 <FieldError id="new-order-couponSerial-error" message={errors.couponSerial} />
+                {!errors.couponSerial && (
+                  <p className="mt-1 text-[11px] text-gray-500">
+                    {couponOn ? `Coupon applied: ${COUPON_RATE * 100}% off the total.` : `Enter the serial number to get ${COUPON_RATE * 100}% off.`}
+                  </p>
+                )}
               </div>
             )}
 
             {/* Payment */}
             <SectionHeader icon={CreditCard} title="Payment" />
             <div>
-              <label htmlFor="new-order-payment">Payment Method<Required /></label>
-              <select {...fieldProps('payment')}>
+              <label htmlFor="new-order-paymentMethod">Payment Method<Required /></label>
+              <select {...fieldProps('paymentMethod')}>
                 <option value="">Select payment method</option>
                 {PAYMENT_METHODS.map((p) => <option key={p} value={p}>{p}</option>)}
               </select>
-              <FieldError id="new-order-payment-error" message={errors.payment} />
+              <FieldError id="new-order-paymentMethod-error" message={errors.paymentMethod} />
+            </div>
+            <div>
+              <label htmlFor="new-order-paymentType">Payment Type<Required /></label>
+              <select {...fieldProps('paymentType')}>
+                <option value="">Select payment type</option>
+                {PAYMENT_TYPES.map((p) => <option key={p} value={p}>{p}</option>)}
+              </select>
+              <FieldError id="new-order-paymentType-error" message={errors.paymentType} />
             </div>
             <fieldset>
               <legend className="text-[13px] font-medium text-gray-700 mb-1.5">Payment Status<Required /></legend>
@@ -362,9 +380,11 @@ export default function NewOrderModal({ onClose, onSubmit }) {
                     <>
                       Edited manually.{' '}
                       <button type="button" onClick={resetToCalculatedTotal} className="text-[var(--primary)] hover:text-[var(--primary-hover)] font-medium underline">
-                        Use price list: QAR {calculatedTotal.toLocaleString('en-US')}
+                        Use QAR {calculatedTotal.toLocaleString('en-US')}
                       </button>
                     </>
+                  ) : couponOn && subtotal > 0 ? (
+                    `Coupon ${COUPON_RATE * 100}% off: QAR ${subtotal.toLocaleString('en-US')} → QAR ${calculatedTotal.toLocaleString('en-US')}${hasStartingPrice ? ' (includes a starting price)' : ''}`
                   ) : hasStartingPrice ? (
                     'Includes a starting price (Floor Mat / Seat Cover) — change the total if needed.'
                   ) : calculatedTotal > 0 ? (

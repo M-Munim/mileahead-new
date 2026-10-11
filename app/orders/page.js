@@ -3,16 +3,20 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Search, Phone, X, Clock, Droplets, CheckCircle,
-  RotateCcw, ClipboardList, Copy, Send, Trash2, MessageCircle, Plus,
+  RotateCcw, ClipboardList, Copy, Trash2, MessageCircle, Plus, CalendarPlus, CalendarDays,
 } from 'lucide-react';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import Toast from '../components/Toast';
 import ConfirmationDialog from '../components/ConfirmationDialog';
 import NewOrderModal from '../components/NewOrderModal';
+import AppointmentModal from '../components/AppointmentModal';
 import { useAuth } from '../contexts/AuthContext';
 import { copyText, getWhatsAppUrl } from '../../utils/location';
-import { priceFor, formatQar, PAYMENT_METHODS } from '../../utils/priceList';
+import {
+  priceFor, formatQar, applyDiscount, couponApplies, COUPON_RATE,
+  PAYMENT_METHODS, PAYMENT_TYPES, OTHER_SERVICES_TITLE,
+} from '../../utils/priceList';
 
 // ─────────────────────────────────────────────────────────────
 // Payment status (client revision: replaces Pending → Confirmed → Completed)
@@ -35,7 +39,14 @@ const TABS = [
   { key: 'all',    label: 'All' },
   { key: 'unpaid', label: 'Unpaid' },
   { key: 'paid',   label: 'Paid' },
+  { key: 'appointments', label: 'Appointments' },
 ];
+
+const APPOINTMENT_PILL = {
+  Detailing: 'bg-blue-100 text-blue-700',
+  Polishing: 'bg-violet-100 text-violet-700',
+  Graphene:  'bg-orange-100 text-orange-800',
+};
 
 // ─────────────────────────────────────────────────────────────
 // Demo data (client request: dummy data only). Services, vehicles and prices
@@ -48,39 +59,79 @@ const CLEANERS = {
 };
 
 const SAMPLE_ORDERS = [
-  // id, customer, phone, service, vehicle, extras, plate, discount, coupon serial, payment, status, time, booked, cleaner
-  ['CW-1046', 'Aisha M.',    '+974 5599 2277', 'Body Wash – In & Out',                'Sedan',           [],                                         '9012', '',               '',        'Fawran',         'unpaid', 'Today, 4:30 PM', 'Today · 4:22 PM',  null],
-  ['CW-1045', 'Omar F.',     '+974 6633 1188', 'Body Polishing',                      'SUV',             [],                                         '5678', 'Coupon',         'MT-2041', 'Paylater',       'unpaid', 'Today, 4:15 PM', 'Today · 4:05 PM',  'rajesh'],
-  ['CW-1044', 'Jane Doe',    '+974 5511 2233', 'Full Interior Cleaning',              'Sedan',           ['Floor Mat'],                              '1234', 'Loyalty Free',   '',        'Fawran',         'unpaid', 'Today, 3:50 PM', 'Today · 3:41 PM',  'mahesh'],
-  ['CW-1043', 'Khalid B.',   '+974 6677 3344', 'Paint Protection Film (PPF)',         'GMC / Large SUV', [],                                         '2345', 'Fleet Discount', '',        'Partner Credit', 'unpaid', 'Today, 2:30 PM', 'Today · 2:18 PM',  'suresh'],
-  ['CW-1042', 'Mohammed A.', '+974 3344 5566', 'Nano Ceramic Coating – Graphene Pro', 'SUV',             [],                                         '3456', 'Fleet Discount', '',        'Partner Credit', 'paid',   'Today, 1:40 PM', 'Today · 1:32 PM',  'rajesh'],
-  ['CW-1041', 'Noor S.',     '+974 5544 8822', 'Body Wash – In & Out',                '7-Seater',        ['Dashboard Cover'],                        '7890', '',               '',        'Fawran',         'paid',   'Today, 1:10 PM', 'Today · 1:02 PM',  'mahesh'],
-  ['CW-1040', 'Sara K.',     '+974 7788 9900', 'Glass Polish',                        'SUV',             [],                                         '4567', 'Coupon',         'MT-1987', 'Fawran',         'paid',   'Today, 12:20 PM', 'Today · 12:11 PM', 'suresh'],
-  ['CW-1039', 'Fahad Q.',    '+974 6611 2200', 'Interior & Exterior Polishing',       'SUV',             ['Seat Cover'],                             '8901', '',               '',        'Paylater',       'unpaid', 'Today, 11:30 AM', 'Today · 11:24 AM', 'rajesh'],
-  ['CW-1038', 'Hind A.',     '+974 5522 6611', 'Nano Ceramic Tint',                   'Sedan',           [],                                         '6789', 'Loyalty Free',   '',        'Fawran',         'paid',   'Today, 10:45 AM', 'Today · 10:38 AM', 'mahesh'],
-  ['CW-1037', 'Yusuf R.',    '+974 6611 4477', 'Body Wash – In & Out',                'SUV',             ['Steering Wheel Cover', 'Handrest Cover'], '0123', '',               '',        'Paylater',       'unpaid', 'Today, 10:00 AM', 'Today · 9:52 AM',  'suresh'],
-  ['CW-1036', 'Layla H.',    '+974 5522 3311', 'Paint Protection Film (PPF)',         'Crossover',       [],                                         '1357', '',               '',        'Fawran',         'paid',   'Sat, 12 Jul',    'Sat, 12 Jul · 9:10 AM',  'mahesh'],
-  ['CW-1035', 'Ahmed T.',    '+974 3300 7766', 'Full Interior Cleaning',              '7-Seater',        ['Side Door Cover'],                        '2468', 'Coupon',         'MT-1902', 'Paylater',       'paid',   'Sat, 12 Jul',    'Sat, 12 Jul · 8:40 AM',  'rajesh'],
-  ['CW-1034', 'Mariam D.',   '+974 5511 8899', 'Body Polishing',                      'Sedan',           [],                                         '3691', 'Fleet Discount', '',        'Partner Credit', 'paid',   'Fri, 11 Jul',    'Fri, 11 Jul · 3:15 PM',  'suresh'],
-  ['CW-1033', 'Ali H.',      '+974 6600 5511', '',                                    'SUV',             ['Roof / Ceiling Modification'],            '4820', '',               '',        'Fawran',         'unpaid', 'Fri, 11 Jul',    'Fri, 11 Jul · 1:00 PM',  null],
-  ['CW-1032', 'Reem N.',     '+974 5533 2244', 'Body Wash – In & Out',                'Sedan',           [],                                         '5931', 'Loyalty Free',   '',        'Fawran',         'paid',   'Thu, 10 Jul',    'Thu, 10 Jul · 11:20 AM', 'rajesh'],
-].map(([id, name, phone, service, vehicle, extras, numberPlate, discount, couponSerial, payment, status, time, bookedAt, cleaner]) => ({
-  id,
-  customer: { name, phone },
-  service,
-  vehicle,
-  extras,
-  numberPlate,
-  discount,
-  couponSerial,
-  payment,
-  status,
-  time,
-  bookedAt,
-  total: priceFor(service, vehicle, extras),
-  cleaner: cleaner ? CLEANERS[cleaner] : null,
-  notes: '',
-}));
+  // id, customer, phone, service, vehicle, other services, plate, discount, coupon serial, method, type, status, time, booked, cleaner
+  ['CW-1046', 'Aisha M.',    '+974 5599 2277', 'Body Wash – In & Out',                'Sedan',           [],                                         '9012', '',               '',        'Cash', 'Fawran',         'unpaid', 'Today, 4:30 PM',  'Today · 4:22 PM',  null],
+  ['CW-1045', 'Omar F.',     '+974 6633 1188', 'Body Polishing',                      'SUV',             [],                                         '5678', 'Coupon',         'MT-2041', 'Card', 'Paylater',       'unpaid', 'Today, 4:15 PM',  'Today · 4:05 PM',  'rajesh'],
+  ['CW-1044', 'Jane Doe',    '+974 5511 2233', 'Full Interior Cleaning',              'Sedan',           ['Floor Mat'],                              '1234', 'Loyalty Free',   '',        'Cash', 'Fawran',         'unpaid', 'Today, 3:50 PM',  'Today · 3:41 PM',  'mahesh'],
+  ['CW-1043', 'Khalid B.',   '+974 6677 3344', 'Paint Protection Film (PPF)',         'GMC / Large SUV', [],                                         '2345', 'Fleet Discount', '',        'Card', 'Partner Credit', 'unpaid', 'Today, 2:30 PM',  'Today · 2:18 PM',  'suresh'],
+  ['CW-1042', 'Mohammed A.', '+974 3344 5566', 'Nano Ceramic Coating – Graphene Pro', 'SUV',             [],                                         '3456', 'Fleet Discount', '',        'Card', 'Partner Credit', 'paid',   'Today, 1:40 PM',  'Today · 1:32 PM',  'rajesh'],
+  ['CW-1041', 'Noor S.',     '+974 5544 8822', 'Body Wash – In & Out',                '7-Seater',        ['Dashboard Cover'],                        '7890', '',               '',        'Cash', 'Fawran',         'paid',   'Today, 1:10 PM',  'Today · 1:02 PM',  'mahesh'],
+  ['CW-1040', 'Sara K.',     '+974 7788 9900', 'Glass Polish',                        'SUV',             [],                                         '4567', 'Coupon',         'MT-1987', 'Card', 'Fawran',         'paid',   'Today, 12:20 PM', 'Today · 12:11 PM', 'suresh'],
+  ['CW-1039', 'Fahad Q.',    '+974 6611 2200', 'Interior & Exterior Polishing',       'SUV',             ['Seat Cover'],                             '8901', '',               '',        'Card', 'Paylater',       'unpaid', 'Today, 11:30 AM', 'Today · 11:24 AM', 'rajesh'],
+  ['CW-1038', 'Hind A.',     '+974 5522 6611', 'Nano Ceramic Tint',                   'Sedan',           [],                                         '6789', 'Loyalty Free',   '',        'Cash', 'Fawran',         'paid',   'Today, 10:45 AM', 'Today · 10:38 AM', 'mahesh'],
+  ['CW-1037', 'Yusuf R.',    '+974 6611 4477', 'Body Wash – In & Out',                'SUV',             ['Steering Wheel Cover', 'Handrest Cover'], '0123', '',               '',        'Cash', 'Paylater',       'unpaid', 'Today, 10:00 AM', 'Today · 9:52 AM',  'suresh'],
+  ['CW-1036', 'Layla H.',    '+974 5522 3311', 'Paint Protection Film (PPF)',         'Crossover',       [],                                         '1357', '',               '',        'Card', 'Fawran',         'paid',   'Sat, 12 Jul',     'Sat, 12 Jul · 9:10 AM',  'mahesh'],
+  ['CW-1035', 'Ahmed T.',    '+974 3300 7766', 'Full Interior Cleaning',              '7-Seater',        ['Side Door Cover'],                        '2468', 'Coupon',         'MT-1902', 'Cash', 'Paylater',       'paid',   'Sat, 12 Jul',     'Sat, 12 Jul · 8:40 AM',  'rajesh'],
+  ['CW-1034', 'Mariam D.',   '+974 5511 8899', 'Body Polishing',                      'Sedan',           [],                                         '3691', 'Fleet Discount', '',        'Card', 'Partner Credit', 'paid',   'Fri, 11 Jul',     'Fri, 11 Jul · 3:15 PM',  'suresh'],
+  ['CW-1033', 'Ali H.',      '+974 6600 5511', '',                                    'SUV',             ['Roof / Ceiling Modification'],            '4820', '',               '',        'Cash', 'Fawran',         'unpaid', 'Fri, 11 Jul',     'Fri, 11 Jul · 1:00 PM',  null],
+  ['CW-1032', 'Reem N.',     '+974 5533 2244', 'Body Wash – In & Out',                'Sedan',           [],                                         '5931', 'Loyalty Free',   '',        'Cash', 'Fawran',         'paid',   'Thu, 10 Jul',     'Thu, 10 Jul · 11:20 AM', 'rajesh'],
+].map(([id, name, phone, service, vehicle, extras, numberPlate, discount, couponSerial, paymentMethod, paymentType, status, time, bookedAt, cleaner]) => {
+  const subtotal = priceFor(service, vehicle, extras);
+  return {
+    id,
+    customer: { name, phone },
+    service,
+    vehicle,
+    extras,
+    numberPlate,
+    discount,
+    couponSerial,
+    paymentMethod,
+    paymentType,
+    status,
+    time,
+    bookedAt,
+    subtotal,
+    total: applyDiscount(subtotal, discount, couponSerial),
+    cleaner: cleaner ? CLEANERS[cleaner] : null,
+    notes: '',
+  };
+});
+
+// ─────────────────────────────────────────────────────────────
+// Future appointments (Detailing / Polishing / Graphene)
+// ─────────────────────────────────────────────────────────────
+const pad2 = (n) => String(n).padStart(2, '0');
+const isoDate = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+
+/** Demo appointments a few days ahead of today (built in the browser). */
+const buildSampleAppointments = () => {
+  const inDays = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return isoDate(d); };
+  return [
+    ['AP-201', 'Detailing', 'Mohammed A.', '+974 3344 5566', 1, '10:00', 'Full detailing before a trip'],
+    ['AP-202', 'Graphene',  'Fahad Q.',    '+974 6611 2200', 2, '09:30', 'Graphene Pro on the SUV — car stays the full day'],
+    ['AP-203', 'Polishing', 'Noor S.',     '+974 5544 8822', 2, '15:00', ''],
+    ['AP-204', 'Detailing', 'Layla H.',    '+974 5522 3311', 5, '11:30', 'Interior only'],
+  ].map(([id, type, name, phone, days, time, notes]) => ({
+    id, type, customer: { name, phone }, date: inDays(days), time, notes,
+  }));
+};
+
+/** "Mon, 13 Oct 2026" from YYYY-MM-DD (read as a local date, not UTC). */
+const formatDay = (iso) => {
+  const [y, m, d] = String(iso).split('-').map(Number);
+  if (!y || !m || !d) return iso;
+  return new Date(y, m - 1, d).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+};
+
+/** "4:30 PM" from HH:MM. */
+const formatTime = (hhmm) => {
+  const [h, m] = String(hhmm).split(':').map(Number);
+  if (Number.isNaN(h) || Number.isNaN(m)) return hhmm;
+  return new Date(2000, 0, 1, h, m).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+};
+
+const byDateTime = (a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`);
 
 const getInitial = (name) => (name?.trim()?.[0] || '?').toUpperCase();
 const telHref = (phone) => `tel:${(phone || '').replace(/[^\d+]/g, '')}`;
@@ -92,10 +143,10 @@ const formatDateTime = (date, time) => {
   return date || time || 'N/A';
 };
 
-const serviceLabel = (order) => order.service || 'Extras only';
+const serviceLabel = (order) => order.service || `${OTHER_SERVICES_TITLE} only`;
 const discountLabel = (order) =>
-  order.discount === 'Coupon' && order.couponSerial
-    ? `Coupon · ${order.couponSerial}`
+  couponApplies(order.discount, order.couponSerial)
+    ? `Coupon · ${order.couponSerial} (${COUPON_RATE * 100}% off)`
     : order.discount || '—';
 
 /** A manually entered order, in the same shape as the sample orders. */
@@ -108,11 +159,13 @@ const buildLocalOrder = (values) => ({
   numberPlate: values.numberPlate,
   discount: values.discount,
   couponSerial: values.couponSerial,
-  payment: values.payment,
+  paymentMethod: values.paymentMethod,
+  paymentType: values.paymentType,
   status: values.paymentStatus,
   paidAt: values.paymentStatus === 'paid' ? timeNow() : undefined,
   time: formatDateTime(values.date, values.time),
   bookedAt: `Today · ${timeNow()}`,
+  subtotal: values.subtotal,
   total: values.total,
   cleaner: null,
   notes: values.notes,
@@ -125,14 +178,14 @@ const buildCleanerMessage = (order) => {
     '',
     `Date & Time: ${order.time}`,
     `Service: ${serviceLabel(order)}`,
-    order.extras?.length ? `Extras: ${order.extras.join(', ')}` : null,
+    order.extras?.length ? `${OTHER_SERVICES_TITLE}: ${order.extras.join(', ')}` : null,
     `Vehicle: ${order.vehicle}`,
     `Number Plate: ${order.numberPlate || '—'}`,
     '',
     `Customer: ${order.customer.name}`,
     `Contact: ${order.customer.phone}`,
     '',
-    `Amount: ${formatQar(order.total)} (${order.payment} · ${STATUS_META[order.status].label})`,
+    `Amount: ${formatQar(order.total)} (${order.paymentMethod} · ${order.paymentType} · ${STATUS_META[order.status].label})`,
     order.discount ? `Discount: ${discountLabel(order)}` : null,
     order.notes ? `Notes: ${order.notes}` : null,
   ];
@@ -171,11 +224,15 @@ function OrderDrawer({ order, onClose, onTogglePaid, onCopyMessage, canDelete, o
   const kv = [
     ['Service', serviceLabel(order)],
     ['Vehicle', order.vehicle],
-    ['Extras', order.extras?.length ? order.extras.join(', ') : '—'],
+    [OTHER_SERVICES_TITLE, order.extras?.length ? order.extras.join(', ') : '—'],
     ['Number Plate', order.numberPlate || '—'],
     ['Date & Time', order.time],
     ['Discount', discountLabel(order)],
-    ['Payment Method', order.payment],
+    ['Payment Method', order.paymentMethod],
+    ['Payment Type', order.paymentType],
+    ...(couponApplies(order.discount, order.couponSerial) && order.subtotal
+      ? [['Subtotal', formatQar(order.subtotal)], [`Coupon (${COUPON_RATE * 100}% off)`, `− ${formatQar(order.subtotal - order.total)}`]]
+      : []),
     ['Total', formatQar(order.total)],
     ...(order.notes ? [['Notes', order.notes]] : []),
   ];
@@ -359,19 +416,24 @@ export default function OrdersPage() {
   const [checkedIds, setCheckedIds] = useState(() => new Set());
   const [pendingDelete, setPendingDelete] = useState(null); // orders awaiting confirmation
   const [showNewOrder, setShowNewOrder] = useState(false);
+  const [appointments, setAppointments] = useState(buildSampleAppointments);
+  const [showAppointment, setShowAppointment] = useState(false);
+  const [pendingCancel, setPendingCancel] = useState(null); // appointment awaiting confirmation
   const { hasPermission } = useAuth();
   const canDelete = hasPermission('canDeleteRecords');
   const canCreate = hasPermission('canManageBookings');
 
   const toggleSidebar = useCallback(() => setSidebarOpen((v) => !v), []);
   const closeNewOrder = useCallback(() => setShowNewOrder(false), []);
+  const closeAppointment = useCallback(() => setShowAppointment(false), []);
+  const isAppointmentsTab = activeTab === 'appointments';
 
   const counts = useMemo(() => {
-    const c = { all: orders.length };
+    const c = { all: orders.length, appointments: appointments.length };
     for (const s of STATUSES) c[s] = 0;
     for (const o of orders) c[o.status] = (c[o.status] || 0) + 1;
     return c;
-  }, [orders]);
+  }, [orders, appointments]);
 
   const visibleOrders = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -380,10 +442,18 @@ export default function OrdersPage() {
       if (!q) return true;
       return [
         o.id, o.customer.name, o.customer.phone, serviceLabel(o), o.vehicle,
-        o.numberPlate, o.discount, o.couponSerial, o.payment,
+        o.numberPlate, o.discount, o.couponSerial, o.paymentMethod, o.paymentType,
       ].some((v) => (v || '').toLowerCase().includes(q));
     });
   }, [orders, activeTab, query]);
+
+  const visibleAppointments = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return appointments
+      .filter((a) => !q || [a.id, a.type, a.customer.name, a.customer.phone, a.notes]
+        .some((v) => (v || '').toLowerCase().includes(q)))
+      .sort(byDateTime);
+  }, [appointments, query]);
 
   const selectedOrder = useMemo(
     () => orders.find((o) => o.id === selectedId) || null,
@@ -457,18 +527,42 @@ export default function OrdersPage() {
 
   const resetOrdersView = useCallback(() => {
     setOrders(SAMPLE_ORDERS);
+    setAppointments(buildSampleAppointments());
     setActiveTab('all');
     setQuery('');
     setSelectedId(null);
     setCheckedIds(new Set());
-    setToast({ message: 'Filters reset and sample orders restored', type: 'info' });
+    setToast({ message: 'Filters reset and sample data restored', type: 'info' });
   }, []);
 
-  // Payment method can be changed straight from the table.
-  const updatePayment = useCallback((order, payment) => {
-    setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, payment } : o)));
-    setToast({ message: `#${order.id} payment method: ${payment}`, type: 'success' });
+  // Payment method / type can be changed straight from the table.
+  const updateOrderField = useCallback((order, field, value, label) => {
+    setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, [field]: value } : o)));
+    setToast({ message: `#${order.id} ${label}: ${value}`, type: 'success' });
   }, []);
+
+  // Future appointment: added to the Appointments tab.
+  const handleCreateAppointment = useCallback((values) => {
+    const appointment = {
+      id: `AP-${String(Date.now()).slice(-5)}`,
+      type: values.type,
+      customer: { name: values.customerName, phone: values.phone },
+      date: values.date,
+      time: values.time,
+      notes: values.notes,
+    };
+    setAppointments((prev) => [...prev, appointment]);
+    setShowAppointment(false);
+    setActiveTab('appointments');
+    setQuery('');
+    setToast({ message: `${values.type} appointment booked for ${values.customerName} — ${formatDay(values.date)}, ${formatTime(values.time)}`, type: 'success' });
+  }, []);
+
+  const confirmCancelAppointment = useCallback(() => {
+    if (!pendingCancel) return;
+    setAppointments((prev) => prev.filter((a) => a.id !== pendingCancel.id));
+    setToast({ message: `Appointment for ${pendingCancel.customer.name} cancelled`, type: 'success' });
+  }, [pendingCancel]);
 
   const togglePaid = useCallback((order) => {
     const next = order.status === 'paid' ? 'unpaid' : 'paid';
@@ -531,6 +625,14 @@ export default function OrdersPage() {
                   </button>
                   {canCreate && (
                     <button
+                      onClick={() => setShowAppointment(true)}
+                      className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-colors whitespace-nowrap bg-white text-[var(--primary)] border border-[var(--primary)] hover:bg-[var(--primary-light)]"
+                    >
+                      <CalendarPlus className="w-4 h-4" aria-hidden="true" /> Take Appointment
+                    </button>
+                  )}
+                  {canCreate && (
+                    <button
                       onClick={() => setShowNewOrder(true)}
                       className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-colors whitespace-nowrap ${TONE.primary}`}
                     >
@@ -562,7 +664,7 @@ export default function OrdersPage() {
               </div>
 
               {/* Bulk actions */}
-              {checkedOrders.length > 0 && (
+              {!isAppointmentsTab && checkedOrders.length > 0 && (
                 <div className="mx-5 mt-3 px-3 py-2 flex flex-wrap items-center gap-2 bg-[var(--primary)]/5 border border-[var(--primary)]/20 text-sm">
                   <span className="font-medium text-gray-800 mr-auto">{checkedOrders.length} selected</span>
                   <button
@@ -596,8 +698,71 @@ export default function OrdersPage() {
 
               {/* Table */}
               <div className="p-4 sm:p-5">
+                {isAppointmentsTab ? (
+                  <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                    <table className="w-full border-collapse min-w-[860px]">
+                      <thead>
+                        <tr>
+                          {['Appointment', 'Customer', 'Date', 'Time', 'Notes', ''].map((h, i) => (
+                            <th
+                              key={i}
+                              className="text-left text-[10px] uppercase tracking-wide text-gray-500 font-semibold bg-gray-50 px-3.5 py-2.5 border-b border-gray-200 whitespace-nowrap"
+                            >
+                              {h}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {visibleAppointments.map((a) => (
+                          <tr key={a.id} className="hover:bg-gray-50 border-b border-gray-100 last:border-0">
+                            <td className="px-3.5 py-3 whitespace-nowrap">
+                              <span className={`inline-flex px-3 py-1 rounded-full text-xs font-semibold ${APPOINTMENT_PILL[a.type] || 'bg-gray-100 text-gray-700'}`}>
+                                {a.type}
+                              </span>
+                              <div className="text-[11px] text-gray-400 mt-1">#{a.id}</div>
+                            </td>
+                            <td className="px-3.5 py-3">
+                              <div className="text-sm font-medium text-gray-900 whitespace-nowrap">{a.customer.name}</div>
+                              <div className="text-[11px] text-gray-500 whitespace-nowrap">{a.customer.phone}</div>
+                            </td>
+                            <td className="px-3.5 py-3 text-sm text-gray-700 whitespace-nowrap">{formatDay(a.date)}</td>
+                            <td className="px-3.5 py-3 text-sm font-medium text-gray-900 whitespace-nowrap">{formatTime(a.time)}</td>
+                            <td className="px-3.5 py-3 text-sm text-gray-600">
+                              <div className="max-w-[280px] truncate" title={a.notes}>{a.notes || '—'}</div>
+                            </td>
+                            <td className="px-3.5 py-3 text-right whitespace-nowrap">
+                              <a
+                                href={telHref(a.customer.phone)}
+                                className={`inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 mr-1.5 align-middle transition-colors ${TONE.ghost}`}
+                                aria-label={`Call ${a.customer.name}`}
+                              >
+                                <Phone className="w-3.5 h-3.5" aria-hidden="true" /> Call
+                              </a>
+                              {canCreate && (
+                                <button
+                                  onClick={() => setPendingCancel(a)}
+                                  className="text-xs font-medium px-3 py-1.5 align-middle text-red-600 bg-white border border-red-200 hover:bg-red-50 transition-colors"
+                                >
+                                  Cancel
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+
+                    {visibleAppointments.length === 0 && (
+                      <div className="text-center py-14 text-gray-500">
+                        <CalendarDays className="w-10 h-10 mx-auto mb-3 text-gray-300" aria-hidden="true" />
+                        <p className="text-sm">No appointments{query.trim() ? ' match your search' : ' booked yet'}</p>
+                      </div>
+                    )}
+                  </div>
+                ) : (
                 <div className="overflow-x-auto border border-gray-200 rounded-lg">
-                  <table className="w-full border-collapse min-w-[1180px]">
+                  <table className="w-full border-collapse min-w-[1320px]">
                     <thead>
                       <tr>
                         <th className="bg-gray-50 pl-3.5 pr-1 py-2.5 border-b border-gray-200 w-8">
@@ -609,7 +774,7 @@ export default function OrdersPage() {
                             aria-label="Select all orders in this view"
                           />
                         </th>
-                        {['Order', 'Customer', 'Service', 'Number Plate', 'Discount', 'Payment Method', 'Total', 'Time', 'Status', ''].map((h, i) => (
+                        {['Order', 'Customer', 'Service', 'Number Plate', 'Discount', 'Payment Method', 'Payment Type', 'Total', 'Time', 'Status', ''].map((h, i) => (
                           <th
                             key={i}
                             className="text-left text-[10px] uppercase tracking-wide text-gray-500 font-semibold bg-gray-50 px-3.5 py-2.5 border-b border-gray-200 whitespace-nowrap"
@@ -654,27 +819,30 @@ export default function OrdersPage() {
                           <td className="px-3.5 py-3 text-sm text-gray-700 whitespace-nowrap">{discountLabel(o)}</td>
                           <td className="px-3.5 py-3" onClick={(e) => e.stopPropagation()}>
                             <select
-                              value={o.payment}
-                              onChange={(e) => updatePayment(o, e.target.value)}
-                              className="text-[13px] min-w-[140px]"
+                              value={o.paymentMethod}
+                              onChange={(e) => updateOrderField(o, 'paymentMethod', e.target.value, 'payment method')}
+                              className="text-[13px] min-w-[100px]"
                               style={{ paddingTop: 4, paddingBottom: 4 }}
                               aria-label={`Payment method for order ${o.id}`}
                             >
                               {PAYMENT_METHODS.map((p) => <option key={p}>{p}</option>)}
                             </select>
                           </td>
+                          <td className="px-3.5 py-3" onClick={(e) => e.stopPropagation()}>
+                            <select
+                              value={o.paymentType}
+                              onChange={(e) => updateOrderField(o, 'paymentType', e.target.value, 'payment type')}
+                              className="text-[13px] min-w-[140px]"
+                              style={{ paddingTop: 4, paddingBottom: 4 }}
+                              aria-label={`Payment type for order ${o.id}`}
+                            >
+                              {PAYMENT_TYPES.map((p) => <option key={p}>{p}</option>)}
+                            </select>
+                          </td>
                           <td className="px-3.5 py-3 text-sm font-semibold text-gray-900 whitespace-nowrap">{formatQar(o.total)}</td>
                           <td className="px-3.5 py-3 text-sm text-gray-700 whitespace-nowrap">{o.time}</td>
                           <td className="px-3.5 py-3"><StatusPill status={o.status} /></td>
                           <td className="px-3.5 py-3 text-right whitespace-nowrap">
-                            <button
-                              onClick={(e) => { e.stopPropagation(); handleCopyMessage(o); }}
-                              className="inline-flex items-center justify-center w-7 h-7 mr-1.5 align-middle text-gray-500 border border-gray-200 hover:text-[var(--primary)] hover:border-[var(--primary)] transition-colors"
-                              title="Copy job details for the cleaner"
-                              aria-label={`Copy job details for order ${o.id}`}
-                            >
-                              <Send className="w-3.5 h-3.5" aria-hidden="true" />
-                            </button>
                             {o.status === 'unpaid' ? (
                               <button
                                 onClick={(e) => { e.stopPropagation(); togglePaid(o); }}
@@ -703,10 +871,13 @@ export default function OrdersPage() {
                     </div>
                   )}
                 </div>
+                )}
 
                 <div className="flex items-center gap-1.5 text-[11px] text-gray-400 mt-3">
                   <Clock className="w-3.5 h-3.5" aria-hidden="true" />
-                  Tap a row to open the order · Mark Paid when the customer pays · tick orders to send them to a cleaner{canDelete ? ' or delete them' : ''}
+                  {isAppointmentsTab
+                    ? 'Future appointments, soonest first · use Take Appointment to book one'
+                    : `Tap a row to open the order · Mark Paid when the customer pays · tick orders to send them to a cleaner${canDelete ? ' or delete them' : ''}`}
                 </div>
               </div>
             </div>
@@ -728,6 +899,23 @@ export default function OrdersPage() {
       {showNewOrder && (
         <NewOrderModal onClose={closeNewOrder} onSubmit={handleCreateOrder} />
       )}
+
+      {showAppointment && (
+        <AppointmentModal onClose={closeAppointment} onSubmit={handleCreateAppointment} />
+      )}
+
+      <ConfirmationDialog
+        isOpen={!!pendingCancel}
+        onClose={() => setPendingCancel(null)}
+        onConfirm={confirmCancelAppointment}
+        type="warning"
+        title="Cancel appointment?"
+        message={pendingCancel
+          ? `Cancel the ${pendingCancel.type} appointment for ${pendingCancel.customer.name} on ${formatDay(pendingCancel.date)} at ${formatTime(pendingCancel.time)}?`
+          : ''}
+        confirmText="Cancel Appointment"
+        cancelText="Keep"
+      />
 
       <ConfirmationDialog
         isOpen={!!pendingDelete}

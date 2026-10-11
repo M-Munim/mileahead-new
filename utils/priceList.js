@@ -30,7 +30,12 @@ export const SERVICE_GROUPS = [
   },
 ];
 
-/** Upholstery & interior extras. `from: true` = starting price, final price may be higher. */
+/**
+ * Other services (upholstery & interior work) — can be added on top of a main
+ * service, or booked on their own. `from: true` = starting price, may be higher.
+ */
+export const OTHER_SERVICES_TITLE = 'Other Services';
+
 export const EXTRAS = [
   { name: 'Floor Mat',                  price: 450, from: true },
   { name: 'Dashboard Cover',            price: 70 },
@@ -45,7 +50,25 @@ export const EXTRAS = [
 export const ALL_VEHICLES = ['Sedan', 'Crossover', 'SUV', '7-Seater', 'GMC / Large SUV'];
 
 export const DISCOUNTS = ['Coupon', 'Loyalty Free', 'Fleet Discount'];
-export const PAYMENT_METHODS = ['Fawran', 'Paylater', 'Partner Credit'];
+
+/** How the customer pays… */
+export const PAYMENT_METHODS = ['Cash', 'Card'];
+/** …and through which channel / arrangement. */
+export const PAYMENT_TYPES = ['Fawran', 'Paylater', 'Partner Credit'];
+
+/** Future appointments are booked for one of these. */
+export const APPOINTMENT_TYPES = ['Detailing', 'Polishing', 'Graphene'];
+
+/** A coupon (with its serial number) takes 50% off the whole bill. */
+export const COUPON_RATE = 0.5;
+
+/** True when the order qualifies for the coupon discount. */
+export const couponApplies = (discount, couponSerial) =>
+  discount === 'Coupon' && String(couponSerial || '').trim() !== '';
+
+/** Total after discount. Only the coupon has a fixed amount (50%) for now. */
+export const applyDiscount = (subtotal, discount, couponSerial) =>
+  couponApplies(discount, couponSerial) ? Math.round(subtotal * (1 - COUPON_RATE) * 100) / 100 : subtotal;
 
 export function findService(name) {
   for (const group of SERVICE_GROUPS) {
