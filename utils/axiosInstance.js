@@ -211,8 +211,8 @@ export const vehicleService = {
 
 // ---------- BOOKING ----------
 export const bookingService = {
-    updateBooking: (id, body) =>
-        api.put(API_PATHS.BOOKING.UPDATE_BOOKING(id), body),
+    updateBooking: (id, body, config = {}) =>
+        api.put(API_PATHS.BOOKING.UPDATE_BOOKING(id), body, config),
 
     createBooking: (body, config = {}) =>
         api.post(API_PATHS.BOOKING.CREATE_BOOKING, body, config),

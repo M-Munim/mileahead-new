@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
-import { Search, RotateCcw, Download, Megaphone, Users, X, Info } from 'lucide-react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
+import { Search, RotateCcw, RefreshCw, Download, Megaphone, Users, X, Info, Loader2, AlertCircle } from 'lucide-react';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import Toast from '../components/Toast';
 import { useFocusTrap } from '@/app/hooks/useFocusTrap';
-import { DISCOUNTS, PAYMENT_TYPES } from '../../utils/priceList';
+import { DISCOUNTS, PAYMENT_TYPES, SERVICE_GROUPS, ALL_VEHICLES, OTHER_SERVICES_TITLE } from '../../utils/priceList';
+import { fetchCarWashOrders } from '../../utils/carWashApi';
 
 // ─────────────────────────────────────────────────────────────
 // Customer types (segments)
@@ -30,8 +31,8 @@ const getSegment = ({ visits, daysSinceVisit }) => {
 };
 
 const STATUS_PILL = {
-  Paid:   'bg-green-100 text-green-700 hover:bg-green-200',
-  Unpaid: 'bg-red-100 text-red-700 hover:bg-red-200',
+  Paid:   'bg-green-100 text-green-700',
+  Unpaid: 'bg-red-100 text-red-700',
 };
 
 const PROMO_TEMPLATES = [
@@ -41,38 +42,69 @@ const PROMO_TEMPLATES = [
 ];
 
 // ─────────────────────────────────────────────────────────────
-// Dummy data (client request: no real data at this stage)
+// Customers, built from the car wash orders on the backend
 // ─────────────────────────────────────────────────────────────
-// Services and vehicle types follow the Magic Track price list (utils/priceList.js).
-const SAMPLE_CUSTOMERS = [
-  ['Mohammed A.', '+974 3344 5566', '3456', 'SUV',             'Body Wash – In & Out',          'Fleet Discount', 8, 5,   2640, 'Partner Credit', 'Paid'],
-  ['Jane Doe',    '+974 5511 2233', '1234', 'Sedan',           'Body Wash – In & Out',          'Loyalty Free',   6, 3,   720,  'Fawran',         'Paid'],
-  ['Khalid B.',   '+974 6677 3344', '2345', '7-Seater',        'Full Interior Cleaning',        'Coupon',         5, 9,   1610, 'Paylater',       'Unpaid'],
-  ['Noor S.',     '+974 5544 8822', '7890', 'Sedan',           'Glass Polish',                  'Loyalty Free',   4, 12,  480,  'Fawran',         'Paid'],
-  ['Sara K.',     '+974 7788 9900', '4567', 'SUV',             'Body Wash – In & Out',          'Coupon',         3, 20,  455,  'Fawran',         'Paid'],
-  ['Fahad Q.',    '+974 6611 2200', '8901', 'SUV',             'Body Polishing',                'Fleet Discount', 2, 35,  700,  'Partner Credit', 'Paid'],
-  ['Hind A.',     '+974 5522 6611', '6789', 'Crossover',       'Paint Protection Film (PPF)',   'Coupon',         2, 48,  7035, 'Paylater',       'Unpaid'],
-  ['Omar F.',     '+974 6633 1188', '5678', 'SUV',             'Nano Ceramic Tint',             'Loyalty Free',   1, 4,   1200, 'Fawran',         'Paid'],
-  ['Aisha M.',    '+974 5599 2277', '9012', 'Sedan',           'Body Wash – In & Out',          'Coupon',         1, 10,  30,   'Paylater',       'Paid'],
-  ['Yusuf R.',    '+974 6611 4477', '0123', '7-Seater',        'Body Wash – In & Out',          'Fleet Discount', 1, 45,  40,   'Partner Credit', 'Unpaid'],
-  ['Layla H.',    '+974 5522 3311', '1357', 'SUV',             'Glass Polish',                  'Loyalty Free',   3, 75,  540,  'Fawran',         'Paid'],
-  ['Ahmed T.',    '+974 3300 7766', '2468', 'Sedan',           'Full Interior Cleaning',        'Coupon',         1, 92,  280,  'Paylater',       'Unpaid'],
-  ['Mariam D.',   '+974 5511 8899', '3691', 'GMC / Large SUV', 'Paint Protection Film (PPF)',   'Fleet Discount', 5, 80,  9600, 'Partner Credit', 'Paid'],
-  ['Ali H.',      '+974 6600 5511', '4820', 'SUV',             'Interior & Exterior Polishing', 'Loyalty Free',   1, 120, 650,  'Fawran',         'Paid'],
-  ['Reem N.',     '+974 5533 2244', '5931', 'Sedan',           'Body Wash – In & Out',          'Coupon',         2, 66,  60,   'Paylater',       'Unpaid'],
-].map(([name, phone, plate, vehicle, service, discount, visits, daysSinceVisit, spent, payment, status], i) => {
-  const customer = { id: `C-${i + 1}`, name, phone, plate, vehicle, service, discount, visits, daysSinceVisit, spent, payment, status };
-  return { ...customer, segment: getSegment(customer) };
-});
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Whole days between a YYYY-MM-DD date and today (0 for today or a future date). */
+function daysSince(isoDate, today) {
+  const [y, m, d] = String(isoDate || '').slice(0, 10).split('-').map(Number);
+  if (!y || !m || !d) return Number.POSITIVE_INFINITY;
+  const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  return Math.max(0, Math.round((start - new Date(y, m - 1, d)) / DAY_MS));
+}
+
+const firstFilled = (list, pick) => list.map(pick).find((v) => v) || '';
+
+/**
+ * One row per customer (grouped by phone number, or by name when there is no
+ * phone). `orders` come newest first, so the first one is the latest visit.
+ */
+function buildCustomers(orders) {
+  const today = new Date();
+  const groups = new Map();
+  orders.forEach((o) => {
+    const phoneKey = (o.customer.phone || '').replace(/\D/g, '');
+    const key = phoneKey || `name:${o.customer.name.trim().toLowerCase()}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(o);
+  });
+
+  return [...groups.entries()].map(([key, list]) => {
+    const serviceCount = new Map();
+    list.forEach((o) => {
+      const svc = o.service || `${OTHER_SERVICES_TITLE} only`;
+      serviceCount.set(svc, (serviceCount.get(svc) || 0) + 1);
+    });
+    const favourite = [...serviceCount.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+    const customer = {
+      id: key,
+      name: firstFilled(list, (o) => (o.customer.name !== 'Walk-in customer' ? o.customer.name : '')) || list[0].customer.name,
+      phone: firstFilled(list, (o) => o.customer.phone),
+      plate: firstFilled(list, (o) => o.numberPlate),
+      vehicle: firstFilled(list, (o) => o.vehicle),
+      service: favourite,
+      discount: firstFilled(list, (o) => o.discount),
+      visits: list.length,
+      daysSinceVisit: Math.min(...list.map((o) => daysSince(o.date || o.createdAt, today))),
+      spent: Math.round(list.reduce((sum, o) => sum + (Number(o.total) || 0), 0) * 100) / 100,
+      payment: firstFilled(list, (o) => o.paymentType),
+      status: list.some((o) => o.status !== 'paid') ? 'Unpaid' : 'Paid',
+    };
+    return { ...customer, segment: getSegment(customer) };
+  });
+}
 
 const EMPTY_FILTERS = {
   q: '', segment: '', lastVisit: '', visits: '', service: '', vehicle: '',
   discount: '', payment: '', status: '', spent: '',
 };
 
-const uniqueSorted = (key) => [...new Set(SAMPLE_CUSTOMERS.map((c) => c[key]))].sort();
-const SERVICES = uniqueSorted('service');
-const VEHICLES = uniqueSorted('vehicle');
+const SERVICES = [
+  ...SERVICE_GROUPS.flatMap((g) => g.services.map((svc) => svc.name)),
+  `${OTHER_SERVICES_TITLE} only`,
+];
+const VEHICLES = ALL_VEHICLES;
 
 function matchesFilters(c, f) {
   const q = f.q.trim().toLowerCase();
@@ -100,6 +132,7 @@ function matchesFilters(c, f) {
 
 /** "5 Oct (3d ago)" — relative to the viewer's today. */
 const lastVisitLabel = (days) => {
+  if (!Number.isFinite(days)) return '—';
   if (days === 0) return 'Today';
   const d = new Date();
   d.setDate(d.getDate() - days);
@@ -274,7 +307,9 @@ function FilterSelect({ id, label, value, onChange, options, allLabel = 'All' })
 // ─────────────────────────────────────────────────────────────
 export default function CustomerDataPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [customers, setCustomers] = useState(SAMPLE_CUSTOMERS);
+  const [customers, setCustomers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [showPromo, setShowPromo] = useState(false);
@@ -283,6 +318,28 @@ export default function CustomerDataPage() {
   const toggleSidebar = useCallback(() => setSidebarOpen((v) => !v), []);
   const closePromo = useCallback(() => setShowPromo(false), []);
   const setFilter = (key) => (value) => setFilters((prev) => ({ ...prev, [key]: value }));
+
+  const loadCustomers = useCallback(async () => {
+    try {
+      setCustomers(buildCustomers(await fetchCarWashOrders()));
+      setLoadError(null);
+    } catch (error) {
+      console.error('Error loading customers:', error);
+      setLoadError(error?.message || 'Could not load customers from the server.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadCustomers();
+  }, [loadCustomers]);
+
+  const refreshNow = async () => {
+    setLoading(true);
+    setLoadError(null);
+    await loadCustomers();
+  };
 
   const filtered = useMemo(() => customers.filter((c) => matchesFilters(c, filters)), [customers, filters]);
   const selectedList = useMemo(() => customers.filter((c) => selectedIds.has(c.id)), [customers, selectedIds]);
@@ -309,10 +366,6 @@ export default function CustomerDataPage() {
       filtered.forEach((c) => (allShownSelected ? next.delete(c.id) : next.add(c.id)));
       return next;
     });
-  };
-
-  const updateCustomer = (id, changes) => {
-    setCustomers((prev) => prev.map((c) => (c.id === id ? { ...c, ...changes } : c)));
   };
 
   const handleExport = () => {
@@ -437,6 +490,15 @@ export default function CustomerDataPage() {
                 </button>
                 <button
                   type="button"
+                  onClick={refreshNow}
+                  disabled={loading}
+                  className="flex items-center gap-1.5 px-3 py-2 border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-60"
+                  title="Load the latest data from the server"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} aria-hidden="true" /> Refresh
+                </button>
+                <button
+                  type="button"
                   onClick={() => setShowPromo(true)}
                   className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium bg-green-600 text-white hover:bg-green-700 transition-colors"
                 >
@@ -454,6 +516,14 @@ export default function CustomerDataPage() {
                   Showing {filtered.length} of {customers.length} customers
                 </span>
               </div>
+
+              {loadError && (
+                <div className="mx-5 mt-3 px-3 py-2 flex flex-wrap items-center gap-2 text-sm bg-red-50 border border-red-200 text-red-700" role="alert">
+                  <AlertCircle className="w-4 h-4 shrink-0" aria-hidden="true" />
+                  <span className="mr-auto">Could not load customers: {loadError}</span>
+                  <button onClick={refreshNow} className="text-xs font-semibold underline">Try again</button>
+                </div>
+              )}
 
               {/* Table */}
               <div className="p-4 sm:p-5">
@@ -491,45 +561,23 @@ export default function CustomerDataPage() {
                           </td>
                           <td className="px-3 py-3 text-sm font-medium text-gray-900 whitespace-nowrap">{c.name}</td>
                           <td className="px-3 py-3 text-sm text-gray-700 whitespace-nowrap">{c.phone}</td>
-                          <td className="px-3 py-3 text-sm text-gray-700 whitespace-nowrap">{c.plate}</td>
-                          <td className="px-3 py-3 text-sm text-gray-700 whitespace-nowrap">{c.vehicle}</td>
-                          <td className="px-3 py-3 text-sm text-gray-700 whitespace-nowrap">{c.service}</td>
-                          <td className="px-3 py-3">
-                            <select
-                              value={c.discount}
-                              onChange={(e) => updateCustomer(c.id, { discount: e.target.value })}
-                              className="text-[13px] min-w-[140px]"
-                              style={{ paddingTop: 4, paddingBottom: 4 }}
-                              aria-label={`Discount for ${c.name}`}
-                            >
-                              {DISCOUNTS.map((d) => <option key={d}>{d}</option>)}
-                            </select>
-                          </td>
+                          <td className="px-3 py-3 text-sm text-gray-700 whitespace-nowrap">{c.plate || '—'}</td>
+                          <td className="px-3 py-3 text-sm text-gray-700 whitespace-nowrap">{c.vehicle || '—'}</td>
+                          <td className="px-3 py-3 text-sm text-gray-700 whitespace-nowrap">{c.service || '—'}</td>
+                          <td className="px-3 py-3 text-sm text-gray-700 whitespace-nowrap">{c.discount || '—'}</td>
                           <td className="px-3 py-3 text-sm text-gray-700">{c.visits}</td>
                           <td className="px-3 py-3 text-sm text-gray-700 whitespace-nowrap" suppressHydrationWarning>
                             {lastVisitLabel(c.daysSinceVisit)}
                           </td>
                           <td className="px-3 py-3 text-sm font-medium text-gray-900">{c.spent.toLocaleString('en-US')}</td>
+                          <td className="px-3 py-3 text-sm text-gray-700 whitespace-nowrap">{c.payment || '—'}</td>
                           <td className="px-3 py-3">
-                            <select
-                              value={c.payment}
-                              onChange={(e) => updateCustomer(c.id, { payment: e.target.value })}
-                              className="text-[13px] min-w-[140px]"
-                              style={{ paddingTop: 4, paddingBottom: 4 }}
-                              aria-label={`Payment type for ${c.name}`}
-                            >
-                              {PAYMENT_TYPES.map((p) => <option key={p}>{p}</option>)}
-                            </select>
-                          </td>
-                          <td className="px-3 py-3">
-                            <button
-                              type="button"
-                              onClick={() => updateCustomer(c.id, { status: c.status === 'Paid' ? 'Unpaid' : 'Paid' })}
-                              className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${STATUS_PILL[c.status]}`}
-                              title="Click to change status"
+                            <span
+                              className={`inline-flex px-3 py-1 rounded-full text-xs font-semibold ${STATUS_PILL[c.status]}`}
+                              title={c.status === 'Unpaid' ? 'Has at least one unpaid order' : 'All orders paid'}
                             >
                               {c.status}
-                            </button>
+                            </span>
                           </td>
                           <td className="px-3 py-3">
                             <span className={`inline-flex px-3 py-1 rounded-full text-xs font-semibold ${SEGMENT_META[c.segment].pill}`}>
@@ -543,13 +591,22 @@ export default function CustomerDataPage() {
 
                   {filtered.length === 0 && (
                     <div className="text-center py-14 text-gray-500">
-                      <Users className="w-10 h-10 mx-auto mb-3 text-gray-300" aria-hidden="true" />
-                      <p className="text-sm">No customers match these filters</p>
+                      {loading ? (
+                        <>
+                          <Loader2 className="w-8 h-8 mx-auto mb-3 text-[var(--primary)] animate-spin" aria-hidden="true" />
+                          <p className="text-sm">Loading customers…</p>
+                        </>
+                      ) : (
+                        <>
+                          <Users className="w-10 h-10 mx-auto mb-3 text-gray-300" aria-hidden="true" />
+                          <p className="text-sm">{customers.length === 0 && !loadError ? 'No customers yet — they appear here once orders are entered' : 'No customers match these filters'}</p>
+                        </>
+                      )}
                     </div>
                   )}
                 </div>
                 <p className="text-[11px] text-gray-400 mt-3">
-                  Change a discount or payment type from the list · click Paid / Unpaid to switch it · tick customers to send them a promotion
+                  Built from your car wash orders · Unpaid = the customer has at least one unpaid order · tick customers to send them a promotion
                 </p>
               </div>
             </div>

@@ -1,5 +1,6 @@
+// Magic Track backend. Override with NEXT_PUBLIC_API_URL in .env.local if needed.
 export const BASE_URL =
-    process.env.NEXT_PUBLIC_API_URL || "https://api.milesahead.services";
+    process.env.NEXT_PUBLIC_API_URL || "https://api-magic.milesahead.services";
 
 export const API_PATHS = {
     AUTH: {
@@ -91,10 +92,9 @@ export const API_PATHS = {
         GET_ALL_BOOKINGS: "/api/v1/booking/all-bookings",
         GET_BOOKING_BY_ID: (bookingId) => `/api/v1/booking/one-booking-details/${bookingId}`,
         GET_RECENT_BOOKINGS: "/api/v1/booking/recent",
-        // NOTE: Not in the Postman collection yet (its "Delete Booking" request
-        // points at identity/update-profile by mistake). This follows the
-        // backend's other delete routes (PUT .../delete-<thing>/:id) — confirm
-        // the exact path with the backend dev and change it here if different.
+        // NOTE: Not in the Postman collection (its "Delete Booking" request
+        // points at identity/update-profile by mistake). Verified on the live
+        // Magic Track API: PUT /api/v1/booking/delete-booking/:id works.
         DELETE_BOOKING: (bookingId) => `/api/v1/booking/delete-booking/${bookingId}`,
     },
 };

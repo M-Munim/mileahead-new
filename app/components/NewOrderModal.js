@@ -13,9 +13,10 @@ import {
  * customer who comes in. Services, vehicle types and other services follow the
  * Magic Track price list; the total is suggested from it (a coupon takes 50% off)
  * and stays editable.
- * Dummy data only (client request): nothing is sent to the API.
  *
- * The modal only collects and validates. `onSubmit(values)` adds the order.
+ * The modal only collects and validates. `onSubmit(values)` saves the order
+ * (utils/carWashApi.js) and throws on failure — the error is shown here and the
+ * form is kept.
  */
 
 const pad = (n) => String(n).padStart(2, '0');

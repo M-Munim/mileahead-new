@@ -60,6 +60,8 @@ export function isDashboardRole(value) {
  * Returns true if expired or unparseable.
  */
 function isTokenExpired(token) {
+  // Sessions from the old offline demo login are not valid on the real backend.
+  if (String(token).startsWith('demo.')) return true;
   try {
     const payload = JSON.parse(atob(token.split('.')[1]));
     if (!payload.exp) return false;

@@ -1,17 +1,19 @@
 'use client';
 
-import { Droplets, Users, X, ChevronRight } from 'lucide-react';
+import { Droplets, Users, MonitorSmartphone, ExternalLink, X, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect } from 'react';
 import NextImage from 'next/image';
 import logo from "../../public/magic-track-logo.png";
 
-// Client scope (initial stage): Car Wash Orders and Customer Data only.
+// Client scope (initial stage): Car Wash Orders, Customer Data and the kiosk.
 // More modules will be added back here as they are requested.
 const menuItems = [
   { icon: Droplets, label: 'Car Wash Orders', href: '/orders' },
   { icon: Users, label: 'Customer Data', href: '/customer-data' },
+  // Customer self-service screen — opens in its own tab (full screen, no sidebar).
+  { icon: MonitorSmartphone, label: 'Customer Kiosk', href: '/kiosk', newTab: true },
 ];
 
 export default function Sidebar({ isOpen, toggleSidebar }) {
@@ -64,6 +66,7 @@ export default function Sidebar({ isOpen, toggleSidebar }) {
                     key={item.href}
                     href={item.href}
                     aria-current={isActive ? 'page' : undefined}
+                    {...(item.newTab ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
                     className={`group w-full flex items-center gap-3 px-3 py-2.5 mb-0.5 text-sm transition-all duration-200 ${
                       isActive
                         ? 'bg-[var(--primary)] text-white font-medium shadow-sm'
@@ -79,6 +82,9 @@ export default function Sidebar({ isOpen, toggleSidebar }) {
                       isActive ? 'text-white' : 'text-gray-500 group-hover:text-[var(--primary)]'
                     }`} aria-hidden="true" />
                     <span className="text-left text-[13px] leading-tight flex-1">{item.label}</span>
+                    {item.newTab && (
+                      <ExternalLink className="w-3.5 h-3.5 text-gray-500 shrink-0" aria-hidden="true" />
+                    )}
                     {isActive && (
                       <ChevronRight className="w-3.5 h-3.5 text-white/70 shrink-0" aria-hidden="true" />
                     )}

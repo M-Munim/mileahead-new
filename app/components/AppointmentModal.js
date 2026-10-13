@@ -1,14 +1,14 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, CalendarPlus } from 'lucide-react';
+import { X, CalendarPlus, Loader, AlertCircle } from 'lucide-react';
 import { useFocusTrap } from '@/app/hooks/useFocusTrap';
 import { APPOINTMENT_TYPES } from '../../utils/priceList';
 
 /**
  * Future appointment — for a customer who wants to come back on a later date
- * for Detailing, Polishing or Graphene. Dummy data only: `onSubmit(values)`
- * adds it to the list on screen.
+ * for Detailing, Polishing or Graphene. `onSubmit(values)` saves it and throws
+ * on failure — the error is shown here and the form is kept.
  */
 
 const pad = (n) => String(n).padStart(2, '0');
@@ -31,6 +31,8 @@ export default function AppointmentModal({ onClose, onSubmit }) {
   const [type, setType] = useState(APPOINTMENT_TYPES[0]);
   const [form, setForm] = useState({ customerName: '', phone: '', date: '', time: '', notes: '' });
   const [errors, setErrors] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [submitError, setSubmitError] = useState('');
   const today = todayLocal();
 
   useEffect(() => {
@@ -44,8 +46,9 @@ export default function AppointmentModal({ onClose, onSubmit }) {
     if (errors[name]) setErrors((prev) => ({ ...prev, [name]: '' }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    if (saving) return;
     const values = Object.fromEntries(Object.entries(form).map(([k, v]) => [k, v.trim()]));
     const next = {};
     if (!values.customerName) next.customerName = 'Customer name is required';
@@ -56,7 +59,16 @@ export default function AppointmentModal({ onClose, onSubmit }) {
     if (!values.time) next.time = 'Time is required';
     setErrors(next);
     if (Object.values(next).some(Boolean)) return;
-    onSubmit({ ...values, type });
+    setSaving(true);
+    setSubmitError('');
+    try {
+      await onSubmit({ ...values, type });
+    } catch (err) {
+      console.error('Create appointment error', err);
+      setSubmitError(err?.message || 'Could not book the appointment. Please try again.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const fieldProps = (name) => ({
@@ -139,12 +151,20 @@ export default function AppointmentModal({ onClose, onSubmit }) {
             </div>
           </div>
 
+          {submitError && (
+            <div className="mt-4 flex items-start gap-2 px-3 py-2 text-xs bg-red-50 border border-red-200 text-red-700" role="alert">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-px" aria-hidden="true" />
+              <span>{submitError}</span>
+            </div>
+          )}
+
           <div className="form-footer">
             <button type="button" onClick={onClose} className="px-5 py-2 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 transition-colors">
               Cancel
             </button>
-            <button type="submit" className="px-5 py-2 text-sm font-medium bg-[var(--primary)] text-white hover:bg-[var(--primary-hover)] transition-colors flex items-center gap-2">
-              <CalendarPlus className="w-4 h-4" aria-hidden="true" /> Book {type} Appointment
+            <button type="submit" disabled={saving} className="px-5 py-2 text-sm font-medium bg-[var(--primary)] text-white hover:bg-[var(--primary-hover)] transition-colors flex items-center gap-2 disabled:opacity-50">
+              {saving ? <Loader className="w-4 h-4 animate-spin" aria-hidden="true" /> : <CalendarPlus className="w-4 h-4" aria-hidden="true" />}
+              {saving ? 'Saving…' : `Book ${type} Appointment`}
             </button>
           </div>
         </form>

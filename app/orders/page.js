@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Search, Phone, X, Clock, Droplets, CheckCircle,
-  RotateCcw, ClipboardList, Copy, Trash2, MessageCircle, Plus, CalendarPlus, CalendarDays,
+  RefreshCw, ClipboardList, Copy, Trash2, MessageCircle, Plus, CalendarPlus, CalendarDays,
+  Loader2, AlertCircle,
 } from 'lucide-react';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
@@ -14,9 +15,16 @@ import AppointmentModal from '../components/AppointmentModal';
 import { useAuth } from '../contexts/AuthContext';
 import { copyText, getWhatsAppUrl } from '../../utils/location';
 import {
-  priceFor, formatQar, applyDiscount, couponApplies, COUPON_RATE,
+  formatQar, couponApplies, COUPON_RATE,
   PAYMENT_METHODS, PAYMENT_TYPES, OTHER_SERVICES_TITLE,
 } from '../../utils/priceList';
+import {
+  fetchCarWashOrders, createCarWashOrder, setOrderPaymentStatus, updateOrderField as saveOrderField,
+  deleteOrder, fetchAppointments, createAppointment, cancelAppointment,
+} from '../../utils/carWashApi';
+
+/** Orders refresh in the background so kiosk orders from any device show up. */
+const REFRESH_MS = 30000;
 
 // ─────────────────────────────────────────────────────────────
 // Payment status (client revision: replaces Pending → Confirmed → Completed)
@@ -49,74 +57,8 @@ const APPOINTMENT_PILL = {
 };
 
 // ─────────────────────────────────────────────────────────────
-// Demo data (client request: dummy data only). Services, vehicles and prices
-// follow the Magic Track price list.
-// ─────────────────────────────────────────────────────────────
-const CLEANERS = {
-  rajesh: { name: 'Rajesh (Cleaner)', phone: '+974 3311 9900' },
-  mahesh: { name: 'Mahesh (Cleaner)', phone: '+974 3300 1122' },
-  suresh: { name: 'Suresh (Cleaner)', phone: '+974 3322 7788' },
-};
-
-const SAMPLE_ORDERS = [
-  // id, customer, phone, service, vehicle, other services, plate, discount, coupon serial, method, type, status, time, booked, cleaner
-  ['CW-1046', 'Aisha M.',    '+974 5599 2277', 'Body Wash – In & Out',                'Sedan',           [],                                         '9012', '',               '',        'Cash', 'Fawran',         'unpaid', 'Today, 4:30 PM',  'Today · 4:22 PM',  null],
-  ['CW-1045', 'Omar F.',     '+974 6633 1188', 'Body Polishing',                      'SUV',             [],                                         '5678', 'Coupon',         'MT-2041', 'Card', 'Paylater',       'unpaid', 'Today, 4:15 PM',  'Today · 4:05 PM',  'rajesh'],
-  ['CW-1044', 'Jane Doe',    '+974 5511 2233', 'Full Interior Cleaning',              'Sedan',           ['Floor Mat'],                              '1234', 'Loyalty Free',   '',        'Cash', 'Fawran',         'unpaid', 'Today, 3:50 PM',  'Today · 3:41 PM',  'mahesh'],
-  ['CW-1043', 'Khalid B.',   '+974 6677 3344', 'Paint Protection Film (PPF)',         'GMC / Large SUV', [],                                         '2345', 'Fleet Discount', '',        'Card', 'Partner Credit', 'unpaid', 'Today, 2:30 PM',  'Today · 2:18 PM',  'suresh'],
-  ['CW-1042', 'Mohammed A.', '+974 3344 5566', 'Nano Ceramic Coating – Graphene Pro', 'SUV',             [],                                         '3456', 'Fleet Discount', '',        'Card', 'Partner Credit', 'paid',   'Today, 1:40 PM',  'Today · 1:32 PM',  'rajesh'],
-  ['CW-1041', 'Noor S.',     '+974 5544 8822', 'Body Wash – In & Out',                '7-Seater',        ['Dashboard Cover'],                        '7890', '',               '',        'Cash', 'Fawran',         'paid',   'Today, 1:10 PM',  'Today · 1:02 PM',  'mahesh'],
-  ['CW-1040', 'Sara K.',     '+974 7788 9900', 'Glass Polish',                        'SUV',             [],                                         '4567', 'Coupon',         'MT-1987', 'Card', 'Fawran',         'paid',   'Today, 12:20 PM', 'Today · 12:11 PM', 'suresh'],
-  ['CW-1039', 'Fahad Q.',    '+974 6611 2200', 'Interior & Exterior Polishing',       'SUV',             ['Seat Cover'],                             '8901', '',               '',        'Card', 'Paylater',       'unpaid', 'Today, 11:30 AM', 'Today · 11:24 AM', 'rajesh'],
-  ['CW-1038', 'Hind A.',     '+974 5522 6611', 'Nano Ceramic Tint',                   'Sedan',           [],                                         '6789', 'Loyalty Free',   '',        'Cash', 'Fawran',         'paid',   'Today, 10:45 AM', 'Today · 10:38 AM', 'mahesh'],
-  ['CW-1037', 'Yusuf R.',    '+974 6611 4477', 'Body Wash – In & Out',                'SUV',             ['Steering Wheel Cover', 'Handrest Cover'], '0123', '',               '',        'Cash', 'Paylater',       'unpaid', 'Today, 10:00 AM', 'Today · 9:52 AM',  'suresh'],
-  ['CW-1036', 'Layla H.',    '+974 5522 3311', 'Paint Protection Film (PPF)',         'Crossover',       [],                                         '1357', '',               '',        'Card', 'Fawran',         'paid',   'Sat, 12 Jul',     'Sat, 12 Jul · 9:10 AM',  'mahesh'],
-  ['CW-1035', 'Ahmed T.',    '+974 3300 7766', 'Full Interior Cleaning',              '7-Seater',        ['Side Door Cover'],                        '2468', 'Coupon',         'MT-1902', 'Cash', 'Paylater',       'paid',   'Sat, 12 Jul',     'Sat, 12 Jul · 8:40 AM',  'rajesh'],
-  ['CW-1034', 'Mariam D.',   '+974 5511 8899', 'Body Polishing',                      'Sedan',           [],                                         '3691', 'Fleet Discount', '',        'Card', 'Partner Credit', 'paid',   'Fri, 11 Jul',     'Fri, 11 Jul · 3:15 PM',  'suresh'],
-  ['CW-1033', 'Ali H.',      '+974 6600 5511', '',                                    'SUV',             ['Roof / Ceiling Modification'],            '4820', '',               '',        'Cash', 'Fawran',         'unpaid', 'Fri, 11 Jul',     'Fri, 11 Jul · 1:00 PM',  null],
-  ['CW-1032', 'Reem N.',     '+974 5533 2244', 'Body Wash – In & Out',                'Sedan',           [],                                         '5931', 'Loyalty Free',   '',        'Cash', 'Fawran',         'paid',   'Thu, 10 Jul',     'Thu, 10 Jul · 11:20 AM', 'rajesh'],
-].map(([id, name, phone, service, vehicle, extras, numberPlate, discount, couponSerial, paymentMethod, paymentType, status, time, bookedAt, cleaner]) => {
-  const subtotal = priceFor(service, vehicle, extras);
-  return {
-    id,
-    customer: { name, phone },
-    service,
-    vehicle,
-    extras,
-    numberPlate,
-    discount,
-    couponSerial,
-    paymentMethod,
-    paymentType,
-    status,
-    time,
-    bookedAt,
-    subtotal,
-    total: applyDiscount(subtotal, discount, couponSerial),
-    cleaner: cleaner ? CLEANERS[cleaner] : null,
-    notes: '',
-  };
-});
-
-// ─────────────────────────────────────────────────────────────
 // Future appointments (Detailing / Polishing / Graphene)
 // ─────────────────────────────────────────────────────────────
-const pad2 = (n) => String(n).padStart(2, '0');
-const isoDate = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-
-/** Demo appointments a few days ahead of today (built in the browser). */
-const buildSampleAppointments = () => {
-  const inDays = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return isoDate(d); };
-  return [
-    ['AP-201', 'Detailing', 'Mohammed A.', '+974 3344 5566', 1, '10:00', 'Full detailing before a trip'],
-    ['AP-202', 'Graphene',  'Fahad Q.',    '+974 6611 2200', 2, '09:30', 'Graphene Pro on the SUV — car stays the full day'],
-    ['AP-203', 'Polishing', 'Noor S.',     '+974 5544 8822', 2, '15:00', ''],
-    ['AP-204', 'Detailing', 'Layla H.',    '+974 5522 3311', 5, '11:30', 'Interior only'],
-  ].map(([id, type, name, phone, days, time, notes]) => ({
-    id, type, customer: { name, phone }, date: inDays(days), time, notes,
-  }));
-};
-
 /** "Mon, 13 Oct 2026" from YYYY-MM-DD (read as a local date, not UTC). */
 const formatDay = (iso) => {
   const [y, m, d] = String(iso).split('-').map(Number);
@@ -138,38 +80,11 @@ const telHref = (phone) => `tel:${(phone || '').replace(/[^\d+]/g, '')}`;
 const timeNow = () =>
   new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
-const formatDateTime = (date, time) => {
-  if (date && time) return `${date}, ${time}`;
-  return date || time || 'N/A';
-};
-
 const serviceLabel = (order) => order.service || `${OTHER_SERVICES_TITLE} only`;
 const discountLabel = (order) =>
   couponApplies(order.discount, order.couponSerial)
     ? `Coupon · ${order.couponSerial} (${COUPON_RATE * 100}% off)`
     : order.discount || '—';
-
-/** A manually entered order, in the same shape as the sample orders. */
-const buildLocalOrder = (values) => ({
-  id: `CW-${String(Date.now()).slice(-6)}`,
-  customer: { name: values.customerName, phone: values.phone },
-  service: values.service,
-  vehicle: values.vehicle,
-  extras: values.extras,
-  numberPlate: values.numberPlate,
-  discount: values.discount,
-  couponSerial: values.couponSerial,
-  paymentMethod: values.paymentMethod,
-  paymentType: values.paymentType,
-  status: values.paymentStatus,
-  paidAt: values.paymentStatus === 'paid' ? timeNow() : undefined,
-  time: formatDateTime(values.date, values.time),
-  bookedAt: `Today · ${timeNow()}`,
-  subtotal: values.subtotal,
-  total: values.total,
-  cleaner: null,
-  notes: values.notes,
-});
 
 /** Job sheet sent to the cleaner (WhatsApp / copy-paste). */
 const buildCleanerMessage = (order) => {
@@ -185,7 +100,7 @@ const buildCleanerMessage = (order) => {
     `Customer: ${order.customer.name}`,
     `Contact: ${order.customer.phone}`,
     '',
-    `Amount: ${formatQar(order.total)} (${order.paymentMethod} · ${order.paymentType} · ${STATUS_META[order.status].label})`,
+    `Amount: ${formatQar(order.total)} (${[order.paymentMethod, order.paymentType, STATUS_META[order.status].label].filter(Boolean).join(' · ')})`,
     order.discount ? `Discount: ${discountLabel(order)}` : null,
     order.notes ? `Notes: ${order.notes}` : null,
   ];
@@ -207,7 +122,7 @@ function StatusPill({ status }) {
 // ─────────────────────────────────────────────────────────────
 // Order detail drawer
 // ─────────────────────────────────────────────────────────────
-function OrderDrawer({ order, onClose, onTogglePaid, onCopyMessage, canDelete, onDelete }) {
+function OrderDrawer({ order, onClose, onTogglePaid, onCopyMessage, canDelete, onDelete, busy }) {
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', onKey);
@@ -222,14 +137,15 @@ function OrderDrawer({ order, onClose, onTogglePaid, onCopyMessage, canDelete, o
 
   const isPaid = order.status === 'paid';
   const kv = [
+    ...(order.source === 'kiosk' ? [['Placed from', `Kiosk · Queue ${order.queue}`]] : []),
     ['Service', serviceLabel(order)],
     ['Vehicle', order.vehicle],
     [OTHER_SERVICES_TITLE, order.extras?.length ? order.extras.join(', ') : '—'],
     ['Number Plate', order.numberPlate || '—'],
     ['Date & Time', order.time],
     ['Discount', discountLabel(order)],
-    ['Payment Method', order.paymentMethod],
-    ['Payment Type', order.paymentType],
+    ['Payment Method', order.paymentMethod || '—'],
+    ['Payment Type', order.paymentType || '—'],
     ...(couponApplies(order.discount, order.couponSerial) && order.subtotal
       ? [['Subtotal', formatQar(order.subtotal)], [`Coupon (${COUPON_RATE * 100}% off)`, `− ${formatQar(order.subtotal - order.total)}`]]
       : []),
@@ -378,7 +294,8 @@ function OrderDrawer({ order, onClose, onTogglePaid, onCopyMessage, canDelete, o
               <button
                 type="button"
                 onClick={() => onTogglePaid(order)}
-                className="text-[12px] text-gray-500 hover:text-gray-800 underline"
+                disabled={busy}
+                className="text-[12px] text-gray-500 hover:text-gray-800 underline disabled:opacity-50"
               >
                 Mark as Unpaid
               </button>
@@ -386,9 +303,10 @@ function OrderDrawer({ order, onClose, onTogglePaid, onCopyMessage, canDelete, o
           ) : (
             <button
               onClick={() => onTogglePaid(order)}
-              className={`w-full py-3 text-[13px] font-semibold flex items-center justify-center gap-2 transition-colors ${TONE.green}`}
+              disabled={busy}
+              className={`w-full py-3 text-[13px] font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-60 ${TONE.green}`}
             >
-              <CheckCircle className="w-4 h-4" aria-hidden="true" /> Mark as Paid
+              {busy ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : <CheckCircle className="w-4 h-4" aria-hidden="true" />} Mark as Paid
             </button>
           )}
           <a
@@ -408,7 +326,11 @@ function OrderDrawer({ order, onClose, onTogglePaid, onCopyMessage, canDelete, o
 // ─────────────────────────────────────────────────────────────
 export default function OrdersPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [orders, setOrders] = useState(SAMPLE_ORDERS);
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
+  const [busyIds, setBusyIds] = useState(() => new Set()); // orders with a save in progress
+  const knownOrderIds = useRef(null);
   const [activeTab, setActiveTab] = useState('all');
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState(null);
@@ -416,7 +338,7 @@ export default function OrdersPage() {
   const [checkedIds, setCheckedIds] = useState(() => new Set());
   const [pendingDelete, setPendingDelete] = useState(null); // orders awaiting confirmation
   const [showNewOrder, setShowNewOrder] = useState(false);
-  const [appointments, setAppointments] = useState(buildSampleAppointments);
+  const [appointments, setAppointments] = useState([]);
   const [showAppointment, setShowAppointment] = useState(false);
   const [pendingCancel, setPendingCancel] = useState(null); // appointment awaiting confirmation
   const { hasPermission } = useAuth();
@@ -427,6 +349,64 @@ export default function OrdersPage() {
   const closeNewOrder = useCallback(() => setShowNewOrder(false), []);
   const closeAppointment = useCallback(() => setShowAppointment(false), []);
   const isAppointmentsTab = activeTab === 'appointments';
+
+  const setBusy = useCallback((id, on) => {
+    setBusyIds((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(id); else next.delete(id);
+      return next;
+    });
+  }, []);
+
+  /**
+   * Loads orders + appointments from the backend. `background` = the 30s
+   * refresh: no spinner, and a toast when a new kiosk order arrives.
+   */
+  const loadData = useCallback(async ({ background = false } = {}) => {
+    const [ordersResult, appointmentsResult] = await Promise.allSettled([fetchCarWashOrders(), fetchAppointments()]);
+
+    if (ordersResult.status === 'fulfilled') {
+      const list = ordersResult.value;
+      if (background && knownOrderIds.current) {
+        const fresh = list.filter((o) => !knownOrderIds.current.has(o.id));
+        const kiosk = fresh.filter((o) => o.source === 'kiosk');
+        if (kiosk.length === 1) {
+          setToast({ message: `New kiosk order — queue ${kiosk[0].queue} (${serviceLabel(kiosk[0])}, ${formatQar(kiosk[0].total)})`, type: 'success' });
+        } else if (fresh.length > 0) {
+          setToast({ message: `${fresh.length} new order${fresh.length === 1 ? '' : 's'} received`, type: 'success' });
+        }
+      }
+      knownOrderIds.current = new Set(list.map((o) => o.id));
+      setOrders(list);
+      setLoadError(null);
+    } else if (!background) {
+      console.error('Error loading car wash orders:', ordersResult.reason);
+      setLoadError(ordersResult.reason?.message || 'Could not load orders from the server.');
+    }
+
+    if (appointmentsResult.status === 'fulfilled') {
+      setAppointments(appointmentsResult.value);
+    } else if (!background) {
+      console.error('Error loading appointments:', appointmentsResult.reason);
+    }
+    if (!background) setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    loadData();
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') loadData({ background: true });
+    }, REFRESH_MS);
+    return () => clearInterval(timer);
+  }, [loadData]);
+
+  const refreshNow = useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
+    setSelectedId(null);
+    setCheckedIds(new Set());
+    await loadData();
+  }, [loadData]);
 
   const counts = useMemo(() => {
     const c = { all: orders.length, appointments: appointments.length };
@@ -499,82 +479,106 @@ export default function OrdersPage() {
     window.open(getWhatsAppUrl(text), '_blank', 'noopener,noreferrer');
   }, [checkedOrders]);
 
-  // Dummy data only (client request): every action below changes the list on
-  // this screen and never calls the API.
-  const confirmDelete = useCallback(() => {
+  // Every action below saves to the backend (utils/carWashApi.js).
+  const confirmDelete = useCallback(async () => {
     const list = pendingDelete || [];
     if (list.length === 0 || !canDelete) return;
-    const ids = list.map((o) => o.id);
-    setOrders((prev) => prev.filter((o) => !ids.includes(o.id)));
-    setCheckedIds((prev) => {
-      const next = new Set(prev);
-      ids.forEach((id) => next.delete(id));
-      return next;
-    });
-    if (ids.includes(selectedId)) setSelectedId(null);
-    setToast({ message: ids.length === 1 ? `Order #${ids[0]} deleted` : `${ids.length} orders deleted`, type: 'success' });
+    const deleted = [];
+    let lastError = null;
+    for (const order of list) {
+      try {
+        await deleteOrder(order);
+        deleted.push(order.id);
+      } catch (error) {
+        console.error(`Error deleting order #${order.id}:`, error);
+        lastError = error;
+      }
+    }
+    if (deleted.length > 0) {
+      setOrders((prev) => prev.filter((o) => !deleted.includes(o.id)));
+      setCheckedIds((prev) => {
+        const next = new Set(prev);
+        deleted.forEach((id) => next.delete(id));
+        return next;
+      });
+      if (deleted.includes(selectedId)) setSelectedId(null);
+    }
+    if (!lastError) {
+      setToast({ message: deleted.length === 1 ? `Order #${deleted[0]} deleted` : `${deleted.length} orders deleted`, type: 'success' });
+    } else {
+      setToast({ message: `${list.length - deleted.length} of ${list.length} order(s) could not be deleted: ${lastError.message || 'server error'}`, type: 'error' });
+    }
   }, [pendingDelete, canDelete, selectedId]);
 
-  // Manual entry: the new order goes to the top of the list.
-  const handleCreateOrder = useCallback((values) => {
-    const newOrder = buildLocalOrder(values);
-    setOrders((prev) => [newOrder, ...prev]);
+  // New order: saved on the server first; throws so the form keeps the data and shows why.
+  const handleCreateOrder = useCallback(async (values) => {
+    const created = await createCarWashOrder(values);
+    if (created) setOrders((prev) => [created, ...prev.filter((o) => o.id !== created.id)]);
+    else await loadData();
     setShowNewOrder(false);
     setActiveTab('all');
     setQuery('');
-    setToast({ message: `Order #${newOrder.id} for ${values.customerName} created`, type: 'success' });
-  }, []);
+    setToast({ message: `Order${created ? ` #${created.id}` : ''} for ${values.customerName} saved`, type: 'success' });
+  }, [loadData]);
 
-  const resetOrdersView = useCallback(() => {
-    setOrders(SAMPLE_ORDERS);
-    setAppointments(buildSampleAppointments());
-    setActiveTab('all');
-    setQuery('');
-    setSelectedId(null);
-    setCheckedIds(new Set());
-    setToast({ message: 'Filters reset and sample data restored', type: 'info' });
-  }, []);
-
-  // Payment method / type can be changed straight from the table.
-  const updateOrderField = useCallback((order, field, value, label) => {
+  // Payment method / type changed from the table: shown at once, undone if the save fails.
+  const updateOrderField = useCallback(async (order, field, value, label) => {
+    const previous = order[field];
     setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, [field]: value } : o)));
-    setToast({ message: `#${order.id} ${label}: ${value}`, type: 'success' });
-  }, []);
+    setBusy(order.id, true);
+    try {
+      await saveOrderField(order, field, value);
+      setToast({ message: `#${order.id} ${label}: ${value}`, type: 'success' });
+    } catch (error) {
+      console.error(`Error updating ${field} for #${order.id}:`, error);
+      setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, [field]: previous } : o)));
+      setToast({ message: `Could not save the ${label} for #${order.id}: ${error.message || 'server error'}`, type: 'error' });
+    } finally {
+      setBusy(order.id, false);
+    }
+  }, [setBusy]);
 
-  // Future appointment: added to the Appointments tab.
-  const handleCreateAppointment = useCallback((values) => {
-    const appointment = {
-      id: `AP-${String(Date.now()).slice(-5)}`,
-      type: values.type,
-      customer: { name: values.customerName, phone: values.phone },
-      date: values.date,
-      time: values.time,
-      notes: values.notes,
-    };
-    setAppointments((prev) => [...prev, appointment]);
+  // Future appointment (saved as a booking with Service = 'appointment').
+  const handleCreateAppointment = useCallback(async (values) => {
+    const created = await createAppointment(values);
+    if (created) setAppointments((prev) => [...prev, created]);
+    else await loadData();
     setShowAppointment(false);
     setActiveTab('appointments');
     setQuery('');
     setToast({ message: `${values.type} appointment booked for ${values.customerName} — ${formatDay(values.date)}, ${formatTime(values.time)}`, type: 'success' });
-  }, []);
+  }, [loadData]);
 
-  const confirmCancelAppointment = useCallback(() => {
-    if (!pendingCancel) return;
-    setAppointments((prev) => prev.filter((a) => a.id !== pendingCancel.id));
-    setToast({ message: `Appointment for ${pendingCancel.customer.name} cancelled`, type: 'success' });
+  const confirmCancelAppointment = useCallback(async () => {
+    const appointment = pendingCancel;
+    if (!appointment) return;
+    try {
+      await cancelAppointment(appointment);
+      setAppointments((prev) => prev.filter((a) => a.id !== appointment.id));
+      setToast({ message: `Appointment for ${appointment.customer.name} cancelled`, type: 'success' });
+    } catch (error) {
+      console.error('Error cancelling appointment:', error);
+      setToast({ message: `Could not cancel the appointment: ${error.message || 'server error'}`, type: 'error' });
+    }
   }, [pendingCancel]);
 
-  const togglePaid = useCallback((order) => {
+  const togglePaid = useCallback(async (order) => {
+    if (busyIds.has(order.id)) return;
     const next = order.status === 'paid' ? 'unpaid' : 'paid';
-    setOrders((prev) =>
-      prev.map((o) =>
-        o.id === order.id
-          ? { ...o, status: next, paidAt: next === 'paid' ? timeNow() : undefined }
-          : o
-      )
-    );
-    setToast({ message: `#${order.id} marked as ${STATUS_META[next].label}`, type: 'success' });
-  }, []);
+    const changes = { status: next, paidAt: next === 'paid' ? timeNow() : undefined };
+    setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, ...changes } : o)));
+    setBusy(order.id, true);
+    try {
+      await setOrderPaymentStatus(order, next);
+      setToast({ message: `#${order.id} marked as ${STATUS_META[next].label}`, type: 'success' });
+    } catch (error) {
+      console.error(`Error updating status for #${order.id}:`, error);
+      setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status: order.status, paidAt: order.paidAt } : o)));
+      setToast({ message: `Could not mark #${order.id} as ${STATUS_META[next].label}: ${error.message || 'server error'}`, type: 'error' });
+    } finally {
+      setBusy(order.id, false);
+    }
+  }, [busyIds, setBusy]);
 
   return (
     <div className="flex min-h-screen bg-gray-50 overflow-x-hidden">
@@ -616,12 +620,12 @@ export default function OrdersPage() {
                     />
                   </div>
                   <button
-                    onClick={resetOrdersView}
-                    className="flex items-center gap-1.5 px-3 py-2 border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors whitespace-nowrap"
-                    aria-label="Reset order filters"
-                    title="Reset filters and restore the sample orders"
+                    onClick={refreshNow}
+                    disabled={loading}
+                    className="flex items-center gap-1.5 px-3 py-2 border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors whitespace-nowrap disabled:opacity-60"
+                    title="Load the latest orders from the server"
                   >
-                    <RotateCcw className="w-3.5 h-3.5" aria-hidden="true" /> Reset
+                    <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} aria-hidden="true" /> Refresh
                   </button>
                   {canCreate && (
                     <button
@@ -696,6 +700,14 @@ export default function OrdersPage() {
                 </div>
               )}
 
+              {loadError && (
+                <div className="mx-5 mt-3 px-3 py-2 flex flex-wrap items-center gap-2 text-sm bg-red-50 border border-red-200 text-red-700" role="alert">
+                  <AlertCircle className="w-4 h-4 shrink-0" aria-hidden="true" />
+                  <span className="mr-auto">Could not load orders from the server: {loadError}</span>
+                  <button onClick={refreshNow} className="text-xs font-semibold underline">Try again</button>
+                </div>
+              )}
+
               {/* Table */}
               <div className="p-4 sm:p-5">
                 {isAppointmentsTab ? (
@@ -756,7 +768,7 @@ export default function OrdersPage() {
                     {visibleAppointments.length === 0 && (
                       <div className="text-center py-14 text-gray-500">
                         <CalendarDays className="w-10 h-10 mx-auto mb-3 text-gray-300" aria-hidden="true" />
-                        <p className="text-sm">No appointments{query.trim() ? ' match your search' : ' booked yet'}</p>
+                        <p className="text-sm">{loading ? 'Loading appointments…' : `No appointments${query.trim() ? ' match your search' : ' booked yet'}`}</p>
                       </div>
                     )}
                   </div>
@@ -800,7 +812,14 @@ export default function OrdersPage() {
                               aria-label={`Select order ${o.id}`}
                             />
                           </td>
-                          <td className="px-3.5 py-3 text-sm font-semibold text-gray-900 whitespace-nowrap">#{o.id}</td>
+                          <td className="px-3.5 py-3 text-sm font-semibold text-gray-900 whitespace-nowrap">
+                            #{o.id}
+                            {o.source === 'kiosk' && (
+                              <span className="block mt-1 w-fit px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[var(--primary-light)] text-[var(--primary-dark)]">
+                                Kiosk · {o.queue}
+                              </span>
+                            )}
+                          </td>
                           <td className="px-3.5 py-3">
                             <div className="text-sm font-medium text-gray-900 whitespace-nowrap">{o.customer.name}</div>
                             <div className="text-[11px] text-gray-500 whitespace-nowrap">{o.customer.phone}</div>
@@ -821,10 +840,12 @@ export default function OrdersPage() {
                             <select
                               value={o.paymentMethod}
                               onChange={(e) => updateOrderField(o, 'paymentMethod', e.target.value, 'payment method')}
+                              disabled={busyIds.has(o.id)}
                               className="text-[13px] min-w-[100px]"
                               style={{ paddingTop: 4, paddingBottom: 4 }}
                               aria-label={`Payment method for order ${o.id}`}
                             >
+                              {!o.paymentMethod && <option value="">—</option>}
                               {PAYMENT_METHODS.map((p) => <option key={p}>{p}</option>)}
                             </select>
                           </td>
@@ -832,10 +853,12 @@ export default function OrdersPage() {
                             <select
                               value={o.paymentType}
                               onChange={(e) => updateOrderField(o, 'paymentType', e.target.value, 'payment type')}
+                              disabled={busyIds.has(o.id)}
                               className="text-[13px] min-w-[140px]"
                               style={{ paddingTop: 4, paddingBottom: 4 }}
                               aria-label={`Payment type for order ${o.id}`}
                             >
+                              {!o.paymentType && <option value="">—</option>}
                               {PAYMENT_TYPES.map((p) => <option key={p}>{p}</option>)}
                             </select>
                           </td>
@@ -846,9 +869,10 @@ export default function OrdersPage() {
                             {o.status === 'unpaid' ? (
                               <button
                                 onClick={(e) => { e.stopPropagation(); togglePaid(o); }}
-                                className={`text-xs font-medium px-3 py-1.5 transition-colors ${TONE.green}`}
+                                disabled={busyIds.has(o.id)}
+                                className={`text-xs font-medium px-3 py-1.5 transition-colors disabled:opacity-60 ${TONE.green}`}
                               >
-                                Mark Paid
+                                {busyIds.has(o.id) ? 'Saving…' : 'Mark Paid'}
                               </button>
                             ) : (
                               <button
@@ -866,8 +890,17 @@ export default function OrdersPage() {
 
                   {visibleOrders.length === 0 && (
                     <div className="text-center py-14 text-gray-500">
-                      <ClipboardList className="w-10 h-10 mx-auto mb-3 text-gray-300" aria-hidden="true" />
-                      <p className="text-sm">No orders in this view</p>
+                      {loading ? (
+                        <>
+                          <Loader2 className="w-8 h-8 mx-auto mb-3 text-[var(--primary)] animate-spin" aria-hidden="true" />
+                          <p className="text-sm">Loading orders…</p>
+                        </>
+                      ) : (
+                        <>
+                          <ClipboardList className="w-10 h-10 mx-auto mb-3 text-gray-300" aria-hidden="true" />
+                          <p className="text-sm">{orders.length === 0 && !loadError ? 'No orders yet — add one with New Order' : 'No orders in this view'}</p>
+                        </>
+                      )}
                     </div>
                   )}
                 </div>
@@ -893,6 +926,7 @@ export default function OrdersPage() {
           onCopyMessage={handleCopyMessage}
           canDelete={canDelete}
           onDelete={setPendingDelete}
+          busy={busyIds.has(selectedOrder.id)}
         />
       )}
 

@@ -3,21 +3,11 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Toast from '../../components/Toast';
-import { useAuth, ROLES, ROLE_NAMES } from '../../contexts/AuthContext';
+import { driverService } from '../../../utils/axiosInstance';
+import { useAuth, ROLES, ROLE_NAMES, isDashboardRole } from '../../contexts/AuthContext';
 import NextImage from 'next/image';
 import { Shield, UserCog } from 'lucide-react';
 import emblem from '../../../public/magic-track-emblem.png';
-
-// Demo login (client request: no server access at this stage). The account,
-// not the role card, decides the role.
-const DEMO_ACCOUNTS = [
-  { username: 'admin', email: 'admin@magictrack.qa', password: 'magic123', role: ROLES.ADMIN },
-  { username: 'manager', email: 'manager@magictrack.qa', password: 'magic123', role: ROLES.MANAGER },
-];
-
-/** JWT-shaped token with no expiry, so AuthContext keeps the session on reload. */
-const demoToken = (account) =>
-  `demo.${btoa(JSON.stringify({ sub: account.username, role: account.role, demo: true }))}.demo`;
 
 export default function LoginPage() {
   const router = useRouter();
@@ -79,22 +69,53 @@ export default function LoginPage() {
 
     setLoading(true);
 
-    const identifier = formData.identifier.trim().toLowerCase();
-    const account = DEMO_ACCOUNTS.find(
-      (acc) => (acc.username === identifier || acc.email === identifier) && acc.password === formData.password
-    );
+    try {
+      // Admin / Manager accounts: POST /api/v1/identity/login on the Magic Track backend.
+      const response = await driverService.login({
+        identifier: formData.identifier.trim(),
+        password: formData.password,
+      });
 
-    if (!account) {
+      // The account's real role comes from the server. The card the user picked
+      // is presentational only and must never grant privilege: if the API omits
+      // the role we fall back to Manager (least privilege), never to Admin.
+      const accountRole = response.data.user?.role || ROLES.MANAGER;
+
+      // Driver / cleaner accounts have no access to this panel.
+      if (!isDashboardRole(accountRole)) {
+        setToast({
+          message: 'This account does not have dashboard access. Please sign in with an Admin or Manager account.',
+          type: 'error'
+        });
+        return;
+      }
+
+      if (!response.data.token) {
+        setToast({ message: response.data.message || 'Login failed. Please try again.', type: 'error' });
+        return;
+      }
+
+      login(response.data.token, {
+        id: response.data.user?.id,
+        username: response.data.user?.username || formData.identifier,
+        email: response.data.user?.email || formData.identifier,
+        role: accountRole,
+      }, accountRole);
+
+      setToast({ message: `Login successful as ${ROLE_NAMES[accountRole]}!`, type: 'success' });
+      setTimeout(() => {
+        router.push('/orders');
+      }, 800);
+    } catch (error) {
+      setToast({
+        message: [400, 401, 404].includes(error.status)
+          ? 'Invalid username or password.'
+          : error.message || 'Login failed. Please try again.',
+        type: 'error'
+      });
+    } finally {
       setLoading(false);
-      setToast({ message: 'Invalid username or password.', type: 'error' });
-      return;
     }
-
-    login(demoToken(account), { username: account.username, email: account.email, role: account.role }, account.role);
-    setToast({ message: `Login successful as ${ROLE_NAMES[account.role]}!`, type: 'success' });
-    setTimeout(() => {
-      router.push('/orders');
-    }, 800);
   };
 
   return (

@@ -1,0 +1,640 @@
+'use client';
+
+import { useState, useEffect, useMemo } from 'react';
+import NextImage from 'next/image';
+import {
+  Droplets, Sparkles, Gem, Armchair, WandSparkles, Sun, ShieldCheck, Shield, Plus,
+  Car, CarFront, Bus, Truck, Banknote, CreditCard, Zap, Clock, Handshake, Check,
+  Languages, ArrowLeft, ArrowRight, CircleCheck, Ticket, AlertCircle, Loader2,
+} from 'lucide-react';
+import logo from '../../public/magic-track-logo.png';
+import {
+  SERVICE_GROUPS, EXTRAS, PAYMENT_METHODS, PAYMENT_TYPES, COUPON_RATE,
+  vehiclesForService, servicePrice, priceFor, applyDiscount, couponApplies,
+} from '../../utils/priceList';
+import { createCarWashOrder, ORDER_SOURCE } from '../../utils/carWashApi';
+
+/**
+ * Customer self-service screen, placed at the front of the car wash center.
+ * The customer picks the same options staff have in "New Order", places the
+ * order and gets a queue number. The order is saved on the backend as a
+ * booking with service_type = 'kiosk' (no login needed) and shows up on the
+ * dashboard as Unpaid on any device.
+ */
+
+// ─────────────────────────────────────────────────────────────
+// Options
+// ─────────────────────────────────────────────────────────────
+const OTHER_ONLY = '__other_only__';
+
+const SERVICE_ICONS = {
+  'Body Wash – In & Out': Droplets,
+  'Body Polishing': Sparkles,
+  'Glass Polish': Gem,
+  'Full Interior Cleaning': Armchair,
+  'Interior & Exterior Polishing': WandSparkles,
+  'Nano Ceramic Tint': Sun,
+  'Nano Ceramic Coating – Graphene Pro': ShieldCheck,
+  'Paint Protection Film (PPF)': Shield,
+};
+
+const VEHICLE_ICONS = { Sedan: Car, Crossover: CarFront, SUV: CarFront, '7-Seater': Bus, 'GMC / Large SUV': Truck };
+const METHOD_ICONS = { Cash: Banknote, Card: CreditCard };
+const TYPE_ICONS = { Fawran: Zap, Paylater: Clock, 'Partner Credit': Handshake };
+
+const SLOTS = [
+  { key: 'Now', minutes: 0 },
+  { key: '15 min', minutes: 15 },
+  { key: '30 min', minutes: 30 },
+  { key: '45 min', minutes: 45 },
+  { key: '1 hour', minutes: 60 },
+  { key: '2 hours', minutes: 120 },
+];
+
+const STEPS = ['1. Service', '2. Car Type', '3. Other Services', '4. Details & Payment'];
+const DONE_RESET_SECONDS = 30;
+
+// ─────────────────────────────────────────────────────────────
+// Arabic text (English is the key)
+// ─────────────────────────────────────────────────────────────
+const AR = {
+  'Touch the screen to start your order': 'المس الشاشة لتبدأ طلبك',
+  '1. Service': '1. الخدمة', '2. Car Type': '2. نوع السيارة', '3. Other Services': '3. خدمات أخرى', '4. Details & Payment': '4. البيانات والدفع',
+  'Choose your service': 'اختر الخدمة', 'Tap the service you want today.': 'اختر الخدمة التي تريدها اليوم.',
+  'Car Wash, Polishing & Protection': 'غسيل وتلميع وحماية السيارة', 'Paint Protection Film (PPF)': 'فيلم حماية الطلاء (PPF)',
+  'Other services only': 'خدمات أخرى فقط', 'Seat covers, floor mats and more': 'أغطية المقاعد ودواسات الأرضية وغيرها',
+  'From': 'من', 'What are you driving?': 'ما نوع سيارتك؟', 'Price depends on your car size.': 'السعر حسب حجم السيارة.',
+  'Add other services': 'أضف خدمات أخرى', 'Optional. Tap to add or remove.': 'اختياري. المس للإضافة أو الإزالة.',
+  'Choose at least one service.': 'اختر خدمة واحدة على الأقل.',
+  'Your details and payment': 'بياناتك والدفع', 'Fill in your details and choose how to pay.': 'أدخل بياناتك واختر طريقة الدفع.',
+  'Your name': 'اسمك', '(optional)': '(اختياري)', 'Mobile number': 'رقم الجوال', 'Plate number': 'رقم اللوحة',
+  'Coupon number': 'رقم القسيمة', 'Payment method': 'طريقة الدفع', 'Payment type': 'نوع الدفع',
+  'When do you want to start?': 'متى تريد أن نبدأ؟', 'Coupon applied': 'تم تطبيق القسيمة', 'off': 'خصم',
+  'Your order': 'طلبك', 'Nothing selected yet.': 'لم تختر شيئاً بعد.', 'Subtotal': 'المجموع الفرعي', 'Coupon': 'القسيمة', 'Total': 'المجموع',
+  'Includes a starting price — final price confirmed at the counter.': 'يشمل سعراً مبدئياً — يتم تأكيد السعر النهائي عند الكاشير.',
+  'Back': 'رجوع', 'Next': 'التالي', 'Place order': 'تأكيد الطلب',
+  'Order placed': 'تم تأكيد الطلب', 'Your queue number': 'رقم دورك', 'Please pay at the counter.': 'يرجى الدفع عند الكاشير.',
+  'Drive to the wash bay when your number is called.': 'توجّه إلى مسار الغسيل عند نداء رقمك.',
+  'Starting now': 'نبدأ الآن', 'In': 'بعد', 'Start new order': 'طلب جديد', 'This screen resets in': 'تعود الشاشة للبداية بعد', 'seconds': 'ثانية',
+  'Could not save your order. Please ask our staff for help.': 'تعذر حفظ طلبك. يرجى طلب المساعدة من الموظفين.',
+  'Placing your order…': 'جارٍ إرسال طلبك…',
+  'Enter a valid mobile number': 'أدخل رقم جوال صحيح',
+  'Still needed:': 'مطلوب أيضاً:', 'Choose a service': 'اختر خدمة', 'Choose your car type': 'اختر نوع السيارة',
+  'Choose at least one other service': 'اختر خدمة أخرى واحدة على الأقل',
+  'Choose a service first to see prices.': 'اختر خدمة أولاً لعرض الأسعار.',
+  Now: 'الآن', '15 min': '15 دقيقة', '30 min': '30 دقيقة', '45 min': '45 دقيقة', '1 hour': 'ساعة', '2 hours': 'ساعتان',
+  // Price list
+  'Body Wash – In & Out': 'غسيل الجسم – داخلي وخارجي', 'Body Polishing': 'تلميع الجسم', 'Glass Polish': 'تلميع الزجاج',
+  'Full Interior Cleaning': 'تنظيف داخلي كامل', 'Interior & Exterior Polishing': 'تلميع داخلي وخارجي',
+  'Nano Ceramic Tint': 'تظليل نانو سيراميك', 'Nano Ceramic Coating – Graphene Pro': 'طلاء نانو سيراميك – جرافين برو',
+  Sedan: 'سيدان', Crossover: 'كروس أوفر', SUV: 'دفع رباعي', '7-Seater': '٧ مقاعد', 'GMC / Large SUV': 'جي إم سي / دفع رباعي كبير',
+  'Floor Mat': 'دواسات الأرضية', 'Dashboard Cover': 'غطاء لوحة القيادة', 'Steering Wheel Cover': 'غطاء المقود',
+  'Handrest Cover': 'غطاء مسند اليد', 'Side Door Cover': 'غطاء الباب الجانبي', 'Roof / Ceiling Modification': 'تعديل السقف',
+  'Seat Cover': 'غطاء المقاعد',
+  Cash: 'نقداً', Card: 'بطاقة', Fawran: 'فوران', Paylater: 'ادفع لاحقاً', 'Partner Credit': 'رصيد الشركاء',
+};
+
+const pad = (n) => String(n).padStart(2, '0');
+
+/** Date (YYYY-MM-DD) and time (HH:MM) the customer wants to start, local time. */
+const startAt = (offsetMinutes = 0) => {
+  const d = new Date(Date.now() + offsetMinutes * 60000);
+  return {
+    date: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
+    time: `${pad(d.getHours())}:${pad(d.getMinutes())}`,
+  };
+};
+
+const FRESH = {
+  step: 0, service: '', vehicle: '', extras: [], name: '', phone: '', plate: '',
+  coupon: '', paymentMethod: '', paymentType: '', slot: 'Now',
+};
+
+// ─────────────────────────────────────────────────────────────
+// Building blocks
+// ─────────────────────────────────────────────────────────────
+function Tile({ selected, onClick, icon: Icon, title, subtitle, price }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={selected}
+      className={`relative text-start flex flex-col gap-2 p-5 min-h-[150px] border-2 transition-all active:scale-[0.98] ${
+        selected
+          ? 'border-[var(--primary)] bg-[var(--primary-light)] shadow-sm'
+          : 'border-gray-200 bg-white hover:border-gray-300'
+      }`}
+    >
+      {selected && (
+        <span className="absolute top-3 end-3 w-7 h-7 rounded-full bg-[var(--primary)] text-white flex items-center justify-center">
+          <Check className="w-4 h-4" aria-hidden="true" />
+        </span>
+      )}
+      {Icon && (
+        <span className={`w-11 h-11 flex items-center justify-center ${selected ? 'bg-[var(--primary)] text-white' : 'bg-[var(--primary)]/10 text-[var(--primary)]'}`}>
+          <Icon className="w-6 h-6" aria-hidden="true" />
+        </span>
+      )}
+      <span className="text-lg font-bold text-gray-900 leading-snug pe-8">{title}</span>
+      {subtitle && <span className="text-sm text-gray-500 leading-snug">{subtitle}</span>}
+      {price && <span className="mt-auto text-lg font-extrabold text-[var(--primary)]">{price}</span>}
+    </button>
+  );
+}
+
+const BIG_INPUT = { fontSize: '1.125rem', padding: '0.875rem 1rem' };
+
+// ─────────────────────────────────────────────────────────────
+// Page
+// ─────────────────────────────────────────────────────────────
+export default function KioskPage() {
+  const [lang, setLang] = useState('en');
+  const [s, setS] = useState(FRESH);
+  const [done, setDone] = useState(null); // { queue, slot, service, vehicle, total }
+  const [saveError, setSaveError] = useState(false);
+  const [placing, setPlacing] = useState(false);
+  const [secondsLeft, setSecondsLeft] = useState(DONE_RESET_SECONDS);
+
+  const ar = lang === 'ar';
+  const t = (text) => (ar && AR[text]) || text;
+  const qar = (n) => {
+    const v = Number(n || 0).toLocaleString('en-US');
+    return ar ? `${v} ر.ق` : `QAR ${v}`;
+  };
+
+  const realService = s.service === OTHER_ONLY ? '' : s.service;
+  const vehicleOptions = vehiclesForService(realService);
+  const subtotal = useMemo(() => priceFor(realService, s.vehicle, s.extras), [realService, s.vehicle, s.extras]);
+  const couponOn = couponApplies('Coupon', s.coupon);
+  const total = applyDiscount(subtotal, couponOn ? 'Coupon' : '', s.coupon);
+  const hasStartingPrice = s.extras.some((n) => EXTRAS.find((e) => e.name === n)?.from);
+  const phoneOk = s.phone.replace(/\D/g, '').length >= 7;
+
+  // A step is complete when everything it asks for is filled in.
+  const stepOk = [
+    s.service !== '',
+    s.vehicle !== '',
+    s.service !== OTHER_ONLY || s.extras.length > 0,
+    phoneOk && s.plate.trim() !== '' && s.paymentMethod !== '' && s.paymentType !== '',
+  ];
+  const firstIncomplete = stepOk.findIndex((ok) => !ok);
+  const missing = [
+    !stepOk[0] && { step: 0, label: 'Choose a service' },
+    !stepOk[1] && { step: 1, label: 'Choose your car type' },
+    !stepOk[2] && { step: 2, label: 'Choose at least one other service' },
+    !phoneOk && { step: 3, label: 'Mobile number' },
+    !s.plate.trim() && { step: 3, label: 'Plate number' },
+    !s.paymentMethod && { step: 3, label: 'Payment method' },
+    !s.paymentType && { step: 3, label: 'Payment type' },
+  ].filter(Boolean);
+
+  const set = (changes) => setS((prev) => ({ ...prev, ...changes }));
+
+  const chooseService = (name) => {
+    setS((prev) => {
+      const next = { ...prev, service: name };
+      const allowed = vehiclesForService(name === OTHER_ONLY ? '' : name);
+      if (!allowed.includes(prev.vehicle)) next.vehicle = '';
+      return next;
+    });
+  };
+
+  const toggleExtra = (name) =>
+    setS((prev) => ({
+      ...prev,
+      extras: prev.extras.includes(name) ? prev.extras.filter((x) => x !== name) : [...prev.extras, name],
+    }));
+
+  const startOver = () => {
+    setS(FRESH);
+    setDone(null);
+    setSaveError(false);
+    setSecondsLeft(DONE_RESET_SECONDS);
+  };
+
+  const placeOrder = async () => {
+    if (firstIncomplete !== -1 || placing) return;
+    const slot = SLOTS.find((x) => x.key === s.slot) || SLOTS[0];
+    setPlacing(true);
+    setSaveError(false);
+    try {
+      const created = await createCarWashOrder({
+        customerName: s.name.trim() || 'Walk-in customer',
+        phone: s.phone.trim(),
+        service: realService,
+        vehicle: s.vehicle,
+        extras: s.extras,
+        numberPlate: s.plate.trim(),
+        ...startAt(slot.minutes),
+        discount: couponOn ? 'Coupon' : '',
+        couponSerial: couponOn ? s.coupon.trim() : '',
+        paymentMethod: s.paymentMethod,
+        paymentType: s.paymentType,
+        paymentStatus: 'unpaid',
+        subtotal,
+        total,
+        notes: slot.minutes ? `Customer wants to start in ${slot.key}` : '',
+      }, ORDER_SOURCE.KIOSK);
+      setSecondsLeft(DONE_RESET_SECONDS);
+      setDone({ queue: created?.queue || '—', slot: slot.key, service: realService, vehicle: s.vehicle, total });
+    } catch (error) {
+      console.error('Kiosk order error:', error);
+      setSaveError(true);
+    } finally {
+      setPlacing(false);
+    }
+  };
+
+  // After an order, count down and go back to the start for the next customer.
+  useEffect(() => {
+    if (!done) return undefined;
+    const timer = setInterval(() => {
+      setSecondsLeft((n) => {
+        if (n <= 1) {
+          clearInterval(timer);
+          setS(FRESH);
+          setDone(null);
+          return DONE_RESET_SECONDS;
+        }
+        return n - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [done]);
+
+  // ── Order summary lines ────────────────────────────────────
+  const lines = [];
+  if (s.service) {
+    lines.push({
+      label: realService ? t(realService) : t('Other services only'),
+      sub: s.vehicle ? t(s.vehicle) : '',
+      price: realService && s.vehicle ? qar(servicePrice(realService, s.vehicle)) : '',
+    });
+  }
+  s.extras.forEach((name) => {
+    const extra = EXTRAS.find((e) => e.name === name);
+    lines.push({ label: t(name), price: `${extra?.from ? `${t('From')} ` : ''}${qar(extra?.price)}` });
+  });
+
+  // ── Step content ───────────────────────────────────────────
+  let content = null;
+  if (s.step === 0) {
+    content = (
+      <>
+        <h2 className="text-3xl font-bold text-gray-900">{t('Choose your service')}</h2>
+        <p className="text-lg text-gray-500 mt-1 mb-6">{t('Tap the service you want today.')}</p>
+        {SERVICE_GROUPS.map((group) => (
+          <div key={group.key} className="mb-6">
+            <h3 className="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-3">{t(group.title)}</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+              {group.services.map((svc) => {
+                const from = Math.min(...Object.values(svc.prices));
+                return (
+                  <Tile
+                    key={svc.name}
+                    selected={s.service === svc.name}
+                    onClick={() => chooseService(svc.name)}
+                    icon={SERVICE_ICONS[svc.name]}
+                    title={t(svc.name)}
+                    price={`${t('From')} ${qar(from)}`}
+                  />
+                );
+              })}
+            </div>
+          </div>
+        ))}
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+          <Tile
+            selected={s.service === OTHER_ONLY}
+            onClick={() => chooseService(OTHER_ONLY)}
+            icon={Plus}
+            title={t('Other services only')}
+            subtitle={t('Seat covers, floor mats and more')}
+          />
+        </div>
+      </>
+    );
+  } else if (s.step === 1) {
+    content = (
+      <>
+        <h2 className="text-3xl font-bold text-gray-900">{t('What are you driving?')}</h2>
+        <p className="text-lg text-gray-500 mt-1 mb-6">
+          {t('Price depends on your car size.')}{!s.service && <> {t('Choose a service first to see prices.')}</>}
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+          {vehicleOptions.map((v) => {
+            const price = servicePrice(realService, v);
+            return (
+              <Tile
+                key={v}
+                selected={s.vehicle === v}
+                onClick={() => set({ vehicle: v })}
+                icon={VEHICLE_ICONS[v] || Car}
+                title={t(v)}
+                subtitle={realService ? t(realService) : ''}
+                price={price !== undefined ? qar(price) : ''}
+              />
+            );
+          })}
+        </div>
+      </>
+    );
+  } else if (s.step === 2) {
+    content = (
+      <>
+        <h2 className="text-3xl font-bold text-gray-900">{t('Add other services')}</h2>
+        <p className="text-lg text-gray-500 mt-1 mb-6">
+          {s.service === OTHER_ONLY ? t('Choose at least one service.') : t('Optional. Tap to add or remove.')}
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+          {EXTRAS.map((extra) => (
+            <Tile
+              key={extra.name}
+              selected={s.extras.includes(extra.name)}
+              onClick={() => toggleExtra(extra.name)}
+              icon={Armchair}
+              title={t(extra.name)}
+              price={`+ ${extra.from ? `${t('From')} ` : ''}${qar(extra.price)}`}
+            />
+          ))}
+        </div>
+      </>
+    );
+  } else {
+    const choiceRow = (options, value, field, icons) => (
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        {options.map((o) => {
+          const Icon = icons[o];
+          const on = value === o;
+          return (
+            <button
+              key={o}
+              type="button"
+              aria-pressed={on}
+              onClick={() => set({ [field]: o })}
+              className={`flex items-center justify-center gap-2 py-4 px-3 border-2 text-lg font-bold transition-colors ${
+                on ? 'border-[var(--primary)] bg-[var(--primary)] text-white' : 'border-gray-200 bg-white text-gray-800 hover:border-gray-300'
+              }`}
+            >
+              {Icon && <Icon className="w-5 h-5" aria-hidden="true" />}
+              {t(o)}
+            </button>
+          );
+        })}
+      </div>
+    );
+
+    content = (
+      <>
+        <h2 className="text-3xl font-bold text-gray-900">{t('Your details and payment')}</h2>
+        <p className="text-lg text-gray-500 mt-1 mb-6">{t('Fill in your details and choose how to pay.')}</p>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label htmlFor="k-phone" className="text-base font-semibold text-gray-700 mb-2">{t('Mobile number')} <span className="text-red-500">*</span></label>
+            <input
+              id="k-phone" type="tel" inputMode="tel" dir="ltr" autoComplete="off" placeholder="+974 5555 0000"
+              value={s.phone} onChange={(e) => set({ phone: e.target.value })} style={BIG_INPUT}
+              aria-invalid={s.phone !== '' && !phoneOk}
+            />
+            {s.phone !== '' && !phoneOk && <p className="mt-1 text-sm text-red-600">{t('Enter a valid mobile number')}</p>}
+          </div>
+          <div>
+            <label htmlFor="k-plate" className="text-base font-semibold text-gray-700 mb-2">{t('Plate number')} <span className="text-red-500">*</span></label>
+            <input
+              id="k-plate" inputMode="numeric" dir="ltr" autoComplete="off" placeholder="123456"
+              value={s.plate} onChange={(e) => set({ plate: e.target.value })} style={BIG_INPUT}
+            />
+          </div>
+          <div>
+            <label htmlFor="k-name" className="text-base font-semibold text-gray-700 mb-2">{t('Your name')} <span className="font-normal text-gray-400">{t('(optional)')}</span></label>
+            <input
+              id="k-name" autoComplete="off" value={s.name} onChange={(e) => set({ name: e.target.value })} style={BIG_INPUT}
+            />
+          </div>
+          <div>
+            <label htmlFor="k-coupon" className="text-base font-semibold text-gray-700 mb-2">{t('Coupon number')} <span className="font-normal text-gray-400">{t('(optional)')}</span></label>
+            <input
+              id="k-coupon" dir="ltr" autoComplete="off" placeholder="MT-0000"
+              value={s.coupon} onChange={(e) => set({ coupon: e.target.value })} style={BIG_INPUT}
+            />
+            {couponOn && (
+              <p className="mt-1 text-sm font-semibold text-green-700 flex items-center gap-1.5">
+                <Ticket className="w-4 h-4" aria-hidden="true" /> {t('Coupon applied')}: {COUPON_RATE * 100}% {t('off')}
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-6">
+          <span className="block text-base font-semibold text-gray-700 mb-2">{t('Payment method')} <span className="text-red-500">*</span></span>
+          {choiceRow(PAYMENT_METHODS, s.paymentMethod, 'paymentMethod', METHOD_ICONS)}
+        </div>
+        <div className="mt-5">
+          <span className="block text-base font-semibold text-gray-700 mb-2">{t('Payment type')} <span className="text-red-500">*</span></span>
+          {choiceRow(PAYMENT_TYPES, s.paymentType, 'paymentType', TYPE_ICONS)}
+        </div>
+
+        <div className="mt-6">
+          <span className="block text-base font-semibold text-gray-700 mb-2">{t('When do you want to start?')}</span>
+          <div className="flex flex-wrap gap-2.5">
+            {SLOTS.map((slot) => {
+              const on = s.slot === slot.key;
+              return (
+                <button
+                  key={slot.key}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => set({ slot: slot.key })}
+                  className={`btn-icon px-5 py-3 text-base font-bold border-2 transition-colors ${
+                    on ? 'border-[var(--primary)] bg-[var(--primary)] text-white' : 'border-gray-200 bg-white text-gray-800 hover:border-gray-300'
+                  }`}
+                >
+                  {t(slot.key)}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  return (
+    <div dir={ar ? 'rtl' : 'ltr'} lang={lang} className="min-h-screen flex flex-col bg-gray-100">
+      {/* Header */}
+      <header className="bg-[var(--brand-black)] border-b-[3px] border-[var(--primary)] px-4 sm:px-8 py-3 flex items-center justify-between gap-4">
+        <NextImage src={logo} alt="Magic Track — Car Wash & Auto Care" className="h-16 w-auto" priority />
+        <span className="hidden md:block text-white/70 text-lg">{t('Touch the screen to start your order')}</span>
+        <button
+          type="button"
+          onClick={() => setLang(ar ? 'en' : 'ar')}
+          className="btn-icon flex items-center gap-2 bg-white text-gray-900 px-5 py-2.5 text-lg font-extrabold hover:bg-gray-100"
+        >
+          <Languages className="w-5 h-5" aria-hidden="true" />
+          {ar ? 'English' : 'العربية'}
+        </button>
+      </header>
+
+      {done ? (
+        /* ── Order placed ── */
+        <main className="flex-1 flex items-center justify-center p-6">
+          <div className="bg-white border border-gray-200 shadow-sm max-w-xl w-full text-center px-8 py-12 animate-fade-in-scale">
+            <CircleCheck className="w-16 h-16 text-green-600 mx-auto" aria-hidden="true" />
+            <h2 className="text-4xl font-bold text-gray-900 mt-4">{t('Order placed')}</h2>
+            <p className="text-lg text-gray-500 mt-6">{t('Your queue number')}</p>
+            <div className="text-8xl font-black text-[var(--primary)] leading-none mt-2" dir="ltr">{done.queue}</div>
+            <p className="text-lg text-gray-700 mt-6">
+              {done.service ? t(done.service) : t('Other services only')} · {t(done.vehicle)} ·{' '}
+              {done.slot === 'Now' ? t('Starting now') : `${t('In')} ${t(done.slot)}`}
+            </p>
+            <p className="text-2xl font-extrabold text-gray-900 mt-2">{t('Total')}: {qar(done.total)}</p>
+            <p className="text-base text-gray-500 mt-4">
+              {t('Please pay at the counter.')} {t('Drive to the wash bay when your number is called.')}
+            </p>
+            <button
+              type="button"
+              onClick={startOver}
+              className="mt-8 w-full py-5 text-xl font-extrabold bg-[var(--primary)] text-white hover:bg-[var(--primary-hover)] transition-colors"
+            >
+              {t('Start new order')}
+            </button>
+            <p className="text-sm text-gray-400 mt-3">
+              {t('This screen resets in')} {secondsLeft} {t('seconds')}
+            </p>
+          </div>
+        </main>
+      ) : (
+        <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_380px]">
+          {/* ── Steps ── */}
+          <section className="flex flex-col min-w-0 p-4 sm:p-6 lg:pe-0">
+            <div role="tablist" aria-label="Order steps" className="flex gap-2 overflow-x-auto">
+              {STEPS.map((label, i) => {
+                const active = s.step === i;
+                const complete = !active && stepOk[i];
+                return (
+                  <button
+                    key={label}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => set({ step: i })}
+                    className={`flex-1 min-w-[150px] py-4 px-3 flex items-center justify-center gap-2 text-base sm:text-lg font-bold transition-colors ${
+                      active
+                        ? 'bg-[var(--primary)] text-white'
+                        : complete
+                        ? 'bg-[var(--primary-light)] text-[var(--primary-dark)]'
+                        : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+                    }`}
+                  >
+                    {complete && <Check className="w-5 h-5" aria-hidden="true" />}
+                    {t(label)}
+                  </button>
+                );
+              })}
+            </div>
+            <main className="flex-1 bg-white border border-gray-200 border-t-0 p-5 sm:p-7">{content}</main>
+          </section>
+
+          {/* ── Summary ── */}
+          <aside className="bg-white lg:border-s border-t lg:border-t-0 border-gray-200 p-6 flex flex-col lg:sticky lg:top-0 lg:h-[calc(100vh-91px)]">
+            <h3 className="text-2xl font-bold text-gray-900 mb-3">{t('Your order')}</h3>
+            <div className="flex-1 overflow-y-auto">
+              {lines.length === 0 ? (
+                <p className="text-gray-500 py-3">{t('Nothing selected yet.')}</p>
+              ) : (
+                lines.map((line, i) => (
+                  <div key={i} className="flex justify-between gap-3 py-3 border-b border-gray-100 text-base">
+                    <span className="text-gray-900 font-medium">
+                      {line.label}
+                      {line.sub && <span className="block text-sm text-gray-500 font-normal">{line.sub}</span>}
+                    </span>
+                    <span className="text-gray-900 font-semibold whitespace-nowrap">{line.price}</span>
+                  </div>
+                ))
+              )}
+              {s.paymentMethod && (
+                <div className="flex justify-between gap-3 py-3 border-b border-gray-100 text-base">
+                  <span className="text-gray-500">{t('Payment method')}</span>
+                  <span className="text-gray-900 font-semibold">{t(s.paymentMethod)}{s.paymentType ? ` · ${t(s.paymentType)}` : ''}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="pt-4 border-t-2 border-gray-200 mt-3">
+              {couponOn && subtotal > 0 && (
+                <>
+                  <div className="flex justify-between text-base text-gray-600 py-1">
+                    <span>{t('Subtotal')}</span><span>{qar(subtotal)}</span>
+                  </div>
+                  <div className="flex justify-between text-base text-green-700 font-semibold py-1">
+                    <span>{t('Coupon')} ({COUPON_RATE * 100}%)</span><span>− {qar(subtotal - total)}</span>
+                  </div>
+                </>
+              )}
+              <div className="flex justify-between items-baseline text-2xl font-extrabold text-gray-900 py-1">
+                <span>{t('Total')}</span><span>{qar(total)}</span>
+              </div>
+              {hasStartingPrice && (
+                <p className="text-xs text-gray-500 mt-1">{t('Includes a starting price — final price confirmed at the counter.')}</p>
+              )}
+              {saveError && (
+                <p className="mt-3 flex items-start gap-2 text-sm text-red-700 bg-red-50 border border-red-200 px-3 py-2" role="alert">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" aria-hidden="true" />
+                  {t('Could not save your order. Please ask our staff for help.')}
+                </p>
+              )}
+              {s.step === STEPS.length - 1 && missing.length > 0 && (
+                <div className="mt-3 text-sm bg-[var(--primary-light)] border border-[var(--primary)]/30 px-3 py-2">
+                  <span className="font-semibold text-gray-800">{t('Still needed:')}</span>
+                  <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1">
+                    {missing.map((m) => (
+                      <button
+                        key={m.label}
+                        type="button"
+                        onClick={() => set({ step: m.step })}
+                        className="text-[var(--primary-dark)] font-medium underline"
+                      >
+                        {t(m.label)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="flex gap-3 mt-4">
+                {s.step > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => set({ step: s.step - 1 })}
+                    className="flex-1 flex items-center justify-center gap-2 py-5 text-xl font-bold border-2 border-gray-300 bg-white text-gray-800 hover:bg-gray-50"
+                  >
+                    <ArrowLeft className="w-5 h-5 rtl:-scale-x-100" aria-hidden="true" /> {t('Back')}
+                  </button>
+                )}
+                {s.step < STEPS.length - 1 ? (
+                  <button
+                    type="button"
+                    onClick={() => set({ step: s.step + 1 })}
+                    className="flex-1 flex items-center justify-center gap-2 py-5 text-xl font-bold bg-[var(--primary)] text-white hover:bg-[var(--primary-hover)] disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {t('Next')} <ArrowRight className="w-5 h-5 rtl:-scale-x-100" aria-hidden="true" />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={firstIncomplete !== -1 || placing}
+                    onClick={placeOrder}
+                    className="flex-1 flex items-center justify-center gap-2 py-5 text-xl font-bold bg-green-600 text-white hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {placing ? <Loader2 className="w-6 h-6 animate-spin" aria-hidden="true" /> : <Check className="w-6 h-6" aria-hidden="true" />}
+                    {placing ? t('Placing your order…') : t('Place order')}
+                  </button>
+                )}
+              </div>
+            </div>
+          </aside>
+        </div>
+      )}
+    </div>
+  );
+}
