@@ -139,7 +139,6 @@ export default function NewOrderModal({ onClose, onSubmit }) {
     if (!values.time) next.time = 'Time is required';
     if (values.discount === 'Coupon' && !values.couponSerial) next.couponSerial = 'Coupon serial number is required';
     if (!values.paymentMethod) next.paymentMethod = 'Payment method is required';
-    if (!values.paymentType) next.paymentType = 'Payment type is required';
     if (totalValue === '' || !Number.isFinite(Number(totalValue)) || Number(totalValue) < 0) {
       next.total = 'Enter a valid total of 0 or more';
     }
@@ -323,9 +322,9 @@ export default function NewOrderModal({ onClose, onSubmit }) {
               <FieldError id="new-order-paymentMethod-error" message={errors.paymentMethod} />
             </div>
             <div>
-              <label htmlFor="new-order-paymentType">Payment Type<Required /></label>
+              <label htmlFor="new-order-paymentType">Payment Type <span className="text-gray-400 font-normal">(optional)</span></label>
               <select {...fieldProps('paymentType')}>
-                <option value="">Select payment type</option>
+                <option value="">None</option>
                 {PAYMENT_TYPES.map((p) => <option key={p} value={p}>{p}</option>)}
               </select>
               <FieldError id="new-order-paymentType-error" message={errors.paymentType} />
