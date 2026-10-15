@@ -31,9 +31,12 @@ export const viewport = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en">
+    // translate="no": browser translation (e.g. Chrome on the Arabic kiosk screens) rewrites
+    // text that React manages and crashes the page. The kiosk has its own Arabic.
+    <html lang="en" translate="no" className="notranslate">
       <head>
         <link rel="icon" href="/favicon.ico" sizes="any" />
+        <meta name="google" content="notranslate" />
       </head>
       <body className={`${inter.className} bg-gray-50`} suppressHydrationWarning>
         <AuthProvider>

@@ -1,19 +1,21 @@
 'use client';
 
-import { Droplets, Users, MonitorSmartphone, ExternalLink, X, ChevronRight } from 'lucide-react';
+import { Droplets, Users, MonitorSmartphone, Tv, ExternalLink, X, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect } from 'react';
 import NextImage from 'next/image';
 import logo from "../../public/magic-track-logo.png";
 
-// Client scope (initial stage): Car Wash Orders, Customer Data and the kiosk.
+// Client scope (initial stage): Car Wash Orders, Customer Data, the kiosk and the queue screen.
 // More modules will be added back here as they are requested.
 const menuItems = [
   { icon: Droplets, label: 'Car Wash Orders', href: '/orders' },
   { icon: Users, label: 'Customer Data', href: '/customer-data' },
   // Customer self-service screen — opens in its own tab (full screen, no sidebar).
   { icon: MonitorSmartphone, label: 'Customer Kiosk', href: '/kiosk', newTab: true },
+  // Order status board for the TV in the waiting area.
+  { icon: Tv, label: 'Queue Screen', href: '/queue', newTab: true },
 ];
 
 export default function Sidebar({ isOpen, toggleSidebar }) {

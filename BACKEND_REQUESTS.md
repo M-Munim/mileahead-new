@@ -10,23 +10,20 @@ Orders, appointments and kiosk orders all use the **booking** endpoints. What wo
 
 ---
 
-## 1. New columns on the `bookings` table (needed)
+## 1. New columns on the `bookings` table: ✅ done (15 Oct 2026)
 
-The booking create/update endpoints write every field they receive straight into the table. Sending a field that has no column fails the whole request:
+Thanks! `discount`, `coupon_serial`, `fleet_discount`, `subtotal`, `payment_type` and `payment_status` are now sent by the dashboard and kiosk. **Please confirm the column types.** We send:
 
-```
-POST /api/v1/booking/booking  →  {"success":false,"message":"Unknown column 'payment_type' in 'field list'"}
-```
+| Column | We send | Example |
+|---|---|---|
+| `discount` | text | `Coupon`, `Loyalty Free`, `Fleet Discount` |
+| `coupon_serial` | text | `MT-2041` |
+| `fleet_discount` | number (amount taken off) | `50` |
+| `subtotal` | number | `650` |
+| `payment_type` | text | `Fawran`, `Paylater`, `Partner Credit` |
+| `payment_status` | text | `paid` / `unpaid` |
 
-So the dashboard currently **does not send** these, and the data is lost. Please add:
-
-| Column | Type | Example | Used for |
-|---|---|---|---|
-| `discount` | VARCHAR(50), nullable | `Coupon`, `Loyalty Free`, `Fleet Discount` | Discount chosen on the order |
-| `coupon_serial` | VARCHAR(100), nullable | `MT-2041` | Coupon serial number (a coupon gives 50% off) |
-| `subtotal` | DECIMAL(10,2), nullable | `650.00` | Price before the discount (`price` stays the final total) |
-
-Tell us when they are live. We switch one flag in the frontend (`BACKEND_HAS_DISCOUNT_FIELDS` in `utils/carWashApi.js`) and start sending them.
+If `discount` or `coupon_serial` is a number column, please change it to VARCHAR. Otherwise the server rejects these values and the order is saved without them.
 
 ## 2. Ignore unknown fields instead of failing (recommended)
 
@@ -63,14 +60,15 @@ Only an `admin` account exists (`role: "admin"`). The dashboard supports **Admin
 |---|---|---|
 | Order type | `Service` | `car wash` for orders, `appointment` for future appointments |
 | Where it came from | `service_type` | `walk-in` (dashboard), `kiosk`, `appointment` |
-| Payment status | `status` | `unpaid` / `paid` (appointments: `scheduled` / `cancelled`) |
+| Wash stage (queue screen) | `status` | `waiting` → `washing` → `ready` → `collected` (appointments: `scheduled` / `cancelled`). Orders before 15 Oct 2026 have `paid` / `unpaid` here. |
+| Payment status | `payment_status` | `unpaid` / `paid` |
 | Main service | `package` + `sub_Service` | e.g. `Body Polishing`. For appointments: `Detailing` / `Polishing` / `Graphene` |
 | Main service price | `package_price` | price-list price for the vehicle |
 | Vehicle type | `car_name` | `Sedan`, `SUV`, `7-Seater`, `Crossover`, `GMC / Large SUV` |
 | Number plate | `car_number` | |
 | Other services | `add_ons` + `add_ons_price` | comma separated, e.g. `Seat Cover, Floor Mat` |
 | Payment method | `payment_method` | `Cash` / `Card` |
-| Payment type | `payment_channel` | `Fawran` / `Paylater` / `Partner Credit` |
+| Payment type | `payment_type` (also `payment_channel`) | `Fawran` / `Paylater` / `Partner Credit` |
 | Total | `price` | final amount after discount |
 | Notes | `special_instructions` | |
 | Kiosk queue number | (derived) | `A` + `booking_number` |

@@ -20,7 +20,7 @@ import {
 } from '../../utils/priceList';
 import {
   fetchCarWashOrders, createCarWashOrder, setOrderPaymentStatus, updateOrderField as saveOrderField,
-  deleteOrder, fetchAppointments, createAppointment, cancelAppointment,
+  deleteOrder, fetchAppointments, createAppointment, cancelAppointment, setOrderStage, STAGES,
 } from '../../utils/carWashApi';
 
 /** Orders refresh in the background so kiosk orders from any device show up. */
@@ -34,6 +34,15 @@ const STATUSES = ['unpaid', 'paid'];
 const STATUS_META = {
   unpaid: { label: 'Unpaid', pill: 'bg-red-100 text-red-700' },
   paid:   { label: 'Paid',   pill: 'bg-green-100 text-green-700' },
+};
+
+// Wash stage, shown to customers on the queue screen (/queue).
+// Inline colours: the global select styles in globals.css are unlayered and win over utility classes.
+const STAGE_META = {
+  waiting:   { label: 'Waiting',   select: { backgroundColor: '#f3f4f6', color: '#374151', borderColor: '#e5e7eb' } },
+  washing:   { label: 'Washing',   select: { backgroundColor: 'var(--primary-light)', color: 'var(--primary-dark)', borderColor: 'var(--primary)' } },
+  ready:     { label: 'Ready',     select: { backgroundColor: '#dcfce7', color: '#166534', borderColor: '#86efac' } },
+  collected: { label: 'Collected', select: { backgroundColor: '#fff', color: '#6b7280', borderColor: '#e5e7eb' } },
 };
 
 // Button tones use the app's design tokens.
@@ -122,7 +131,7 @@ function StatusPill({ status }) {
 // ─────────────────────────────────────────────────────────────
 // Order detail drawer
 // ─────────────────────────────────────────────────────────────
-function OrderDrawer({ order, onClose, onTogglePaid, onCopyMessage, canDelete, onDelete, busy }) {
+function OrderDrawer({ order, onClose, onTogglePaid, onChangeStage, onCopyMessage, canDelete, onDelete, busy }) {
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', onKey);
@@ -207,6 +216,30 @@ function OrderDrawer({ order, onClose, onTogglePaid, onCopyMessage, canDelete, o
             >
               <Phone className="w-4 h-4" aria-hidden="true" />
             </a>
+          </div>
+
+          {/* Wash stage */}
+          <div className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold mt-4 mb-2">
+            Queue {order.queue} · Stage
+          </div>
+          <div className="grid grid-cols-4 gap-1.5" role="group" aria-label="Wash stage">
+            {STAGES.map((stage) => {
+              const on = order.stage === stage;
+              return (
+                <button
+                  key={stage}
+                  type="button"
+                  onClick={() => !on && onChangeStage(order, stage)}
+                  disabled={busy}
+                  aria-pressed={on}
+                  className={`py-2 text-[11.5px] font-semibold border transition-colors disabled:opacity-60 ${
+                    on ? 'bg-[var(--primary)] border-[var(--primary)] text-white' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  {STAGE_META[stage].label}
+                </button>
+              );
+            })}
           </div>
 
           {/* Order details */}
@@ -562,6 +595,23 @@ export default function OrdersPage() {
     }
   }, [pendingCancel]);
 
+  // Wash stage: shown at once (and on the queue screen after its next refresh), undone if the save fails.
+  const changeStage = useCallback(async (order, stage) => {
+    if (busyIds.has(order.id) || order.stage === stage) return;
+    setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, stage, hasPaymentStatus: true } : o)));
+    setBusy(order.id, true);
+    try {
+      await setOrderStage(order, stage);
+      setToast({ message: `${order.queue} is now ${STAGE_META[stage].label}`, type: 'success' });
+    } catch (error) {
+      console.error(`Error updating stage for #${order.id}:`, error);
+      setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, stage: order.stage } : o)));
+      setToast({ message: `Could not move ${order.queue} to ${STAGE_META[stage].label}: ${error.message || 'server error'}`, type: 'error' });
+    } finally {
+      setBusy(order.id, false);
+    }
+  }, [busyIds, setBusy]);
+
   const togglePaid = useCallback(async (order) => {
     if (busyIds.has(order.id)) return;
     const next = order.status === 'paid' ? 'unpaid' : 'paid';
@@ -774,7 +824,7 @@ export default function OrdersPage() {
                   </div>
                 ) : (
                 <div className="overflow-x-auto border border-gray-200 rounded-lg">
-                  <table className="w-full border-collapse min-w-[1320px]">
+                  <table className="w-full border-collapse min-w-[1440px]">
                     <thead>
                       <tr>
                         <th className="bg-gray-50 pl-3.5 pr-1 py-2.5 border-b border-gray-200 w-8">
@@ -786,7 +836,7 @@ export default function OrdersPage() {
                             aria-label="Select all orders in this view"
                           />
                         </th>
-                        {['Order', 'Customer', 'Service', 'Number Plate', 'Discount', 'Payment Method', 'Payment Type', 'Total', 'Time', 'Status', ''].map((h, i) => (
+                        {['Order', 'Customer', 'Service', 'Number Plate', 'Stage', 'Discount', 'Payment Method', 'Payment Type', 'Total', 'Time', 'Status', ''].map((h, i) => (
                           <th
                             key={i}
                             className="text-left text-[10px] uppercase tracking-wide text-gray-500 font-semibold bg-gray-50 px-3.5 py-2.5 border-b border-gray-200 whitespace-nowrap"
@@ -814,6 +864,9 @@ export default function OrdersPage() {
                           </td>
                           <td className="px-3.5 py-3 text-sm font-semibold text-gray-900 whitespace-nowrap">
                             #{o.id}
+                            {o.source !== 'kiosk' && o.stage !== 'collected' && (
+                              <span className="block text-[11px] font-medium text-gray-400 mt-0.5">Queue {o.queue}</span>
+                            )}
                             {o.source === 'kiosk' && (
                               <span className="block mt-1 w-fit px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[var(--primary-light)] text-[var(--primary-dark)]">
                                 Kiosk · {o.queue}
@@ -835,6 +888,18 @@ export default function OrdersPage() {
                             )}
                           </td>
                           <td className="px-3.5 py-3 text-sm text-gray-700 whitespace-nowrap font-medium">{o.numberPlate || '—'}</td>
+                          <td className="px-3.5 py-3" onClick={(e) => e.stopPropagation()}>
+                            <select
+                              value={o.stage}
+                              onChange={(e) => changeStage(o, e.target.value)}
+                              disabled={busyIds.has(o.id)}
+                              className="text-[13px] font-semibold min-w-[112px]"
+                              style={{ paddingTop: 4, paddingBottom: 4, ...STAGE_META[o.stage].select }}
+                              aria-label={`Stage for order ${o.id}`}
+                            >
+                              {STAGES.map((stage) => <option key={stage} value={stage}>{STAGE_META[stage].label}</option>)}
+                            </select>
+                          </td>
                           <td className="px-3.5 py-3 text-sm text-gray-700 whitespace-nowrap">{discountLabel(o)}</td>
                           <td className="px-3.5 py-3" onClick={(e) => e.stopPropagation()}>
                             <select
@@ -910,7 +975,7 @@ export default function OrdersPage() {
                   <Clock className="w-3.5 h-3.5" aria-hidden="true" />
                   {isAppointmentsTab
                     ? 'Future appointments, soonest first · use Take Appointment to book one'
-                    : `Tap a row to open the order · Mark Paid when the customer pays · tick orders to send them to a cleaner${canDelete ? ' or delete them' : ''}`}
+                    : `Tap a row to open the order · move each car Waiting → Washing → Ready → Collected (customers see it on the queue screen) · Mark Paid when the customer pays${canDelete ? ' · tick orders to send or delete them' : ''}`}
                 </div>
               </div>
             </div>
@@ -923,6 +988,7 @@ export default function OrdersPage() {
           order={selectedOrder}
           onClose={() => setSelectedId(null)}
           onTogglePaid={togglePaid}
+          onChangeStage={changeStage}
           onCopyMessage={handleCopyMessage}
           canDelete={canDelete}
           onDelete={setPendingDelete}

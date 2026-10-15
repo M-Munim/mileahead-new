@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import NextImage from 'next/image';
 import {
   Droplets, Sparkles, Gem, Armchair, WandSparkles, Sun, ShieldCheck, Shield, Plus,
   Car, CarFront, Bus, Truck, Banknote, CreditCard, Zap, Clock, Handshake, Check,
-  Languages, ArrowLeft, ArrowRight, CircleCheck, Ticket, AlertCircle, Loader2,
+  Languages, ArrowLeft, ArrowRight, CircleCheck, Ticket, AlertCircle, Loader2, Hand,
 } from 'lucide-react';
 import logo from '../../public/magic-track-logo.png';
 import {
@@ -20,6 +20,11 @@ import { createCarWashOrder, ORDER_SOURCE } from '../../utils/carWashApi';
  * order and gets a queue number. The order is saved on the backend as a
  * booking with service_type = 'kiosk' (no login needed) and shows up on the
  * dashboard as Unpaid on any device.
+ *
+ * Made for a touch screen in the office, like a fast-food ordering kiosk: a
+ * welcome screen while nobody is using it, a reset when a customer walks away
+ * mid-order, and no zooming, text selection, right-click or going back. For a
+ * full lock-down, run the screen's browser in kiosk mode (chrome --kiosk).
  */
 
 // ─────────────────────────────────────────────────────────────
@@ -53,12 +58,17 @@ const SLOTS = [
 
 const STEPS = ['1. Service', '2. Car Type', '3. Other Services', '4. Details & Payment'];
 const DONE_RESET_SECONDS = 30;
+const IDLE_SECONDS = 60;      // no touch for this long → "Are you still there?"
+const IDLE_WARN_SECONDS = 15; // …then back to the welcome screen
 
 // ─────────────────────────────────────────────────────────────
 // Arabic text (English is the key)
 // ─────────────────────────────────────────────────────────────
 const AR = {
   'Touch the screen to start your order': 'المس الشاشة لتبدأ طلبك',
+  'Are you still there?': 'هل ما زلت هنا؟', 'Tap anywhere to continue your order.': 'المس الشاشة لمتابعة طلبك.',
+  'Starting over in': 'سيبدأ من جديد بعد', "I'm still here": 'نعم، أنا هنا',
+  'Watch the queue screen for your number.': 'تابع رقمك على شاشة الانتظار.',
   '1. Service': '1. الخدمة', '2. Car Type': '2. نوع السيارة', '3. Other Services': '3. خدمات أخرى', '4. Details & Payment': '4. البيانات والدفع',
   'Choose your service': 'اختر الخدمة', 'Tap the service you want today.': 'اختر الخدمة التي تريدها اليوم.',
   'Car Wash, Polishing & Protection': 'غسيل وتلميع وحماية السيارة', 'Paint Protection Film (PPF)': 'فيلم حماية الطلاء (PPF)',
@@ -148,6 +158,8 @@ const BIG_INPUT = { fontSize: '1.125rem', padding: '0.875rem 1rem' };
 // Page
 // ─────────────────────────────────────────────────────────────
 export default function KioskPage() {
+  const [started, setStarted] = useState(false); // false = welcome screen
+  const [idleLeft, setIdleLeft] = useState(null);  // seconds left on "Are you still there?"
   const [lang, setLang] = useState('en');
   const [s, setS] = useState(FRESH);
   const [done, setDone] = useState(null); // { queue, slot, service, vehicle, total }
@@ -205,11 +217,22 @@ export default function KioskPage() {
       extras: prev.extras.includes(name) ? prev.extras.filter((x) => x !== name) : [...prev.extras, name],
     }));
 
-  const startOver = () => {
+  /** Back to the welcome screen for the next customer. */
+  const resetKiosk = useCallback(() => {
     setS(FRESH);
     setDone(null);
     setSaveError(false);
     setSecondsLeft(DONE_RESET_SECONDS);
+    setIdleLeft(null);
+    setLang('en');
+    setStarted(false);
+  }, []);
+
+  const begin = (language) => {
+    setLang(language);
+    setStarted(true);
+    // Fullscreen needs a tap, so it is asked for here. Ignored where not allowed.
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => {});
   };
 
   const placeOrder = async () => {
@@ -252,15 +275,54 @@ export default function KioskPage() {
       setSecondsLeft((n) => {
         if (n <= 1) {
           clearInterval(timer);
-          setS(FRESH);
-          setDone(null);
+          setTimeout(resetKiosk, 0);
           return DONE_RESET_SECONDS;
         }
         return n - 1;
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, [done]);
+  }, [done, resetKiosk]);
+
+  // A customer who walks away mid-order: ask, then start over.
+  useEffect(() => {
+    if (!started || done || placing) return undefined;
+    let lastTouch = Date.now();
+    const touched = () => { lastTouch = Date.now(); };
+    const events = ['pointerdown', 'keydown', 'input'];
+    events.forEach((name) => window.addEventListener(name, touched, true));
+    const timer = setInterval(() => {
+      const idle = (Date.now() - lastTouch) / 1000;
+      if (idle >= IDLE_SECONDS + IDLE_WARN_SECONDS) resetKiosk();
+      else if (idle >= IDLE_SECONDS) setIdleLeft(Math.ceil(IDLE_SECONDS + IDLE_WARN_SECONDS - idle));
+      else setIdleLeft((v) => (v === null ? v : null));
+    }, 500);
+    return () => {
+      events.forEach((name) => window.removeEventListener(name, touched, true));
+      clearInterval(timer);
+    };
+  }, [started, done, placing, resetKiosk]);
+
+  // Lock-down: no right-click / long-press menu, pinch zoom, dragging, pull-to-refresh or Back.
+  useEffect(() => {
+    const block = (e) => e.preventDefault();
+    const stayHere = () => window.history.pushState(null, '', window.location.href);
+    window.history.pushState(null, '', window.location.href);
+    window.addEventListener('popstate', stayHere);
+    document.addEventListener('contextmenu', block);
+    document.addEventListener('dragstart', block);
+    document.addEventListener('gesturestart', block); // Safari pinch
+    const root = document.documentElement;
+    const previousOverscroll = root.style.overscrollBehavior;
+    root.style.overscrollBehavior = 'none';
+    return () => {
+      window.removeEventListener('popstate', stayHere);
+      document.removeEventListener('contextmenu', block);
+      document.removeEventListener('dragstart', block);
+      document.removeEventListener('gesturestart', block);
+      root.style.overscrollBehavior = previousOverscroll;
+    };
+  }, []);
 
   // ── Order summary lines ────────────────────────────────────
   const lines = [];
@@ -461,7 +523,45 @@ export default function KioskPage() {
   }
 
   return (
-    <div dir={ar ? 'rtl' : 'ltr'} lang={lang} className="min-h-screen flex flex-col bg-gray-100">
+    <div
+      dir={ar ? 'rtl' : 'ltr'}
+      lang={lang}
+      translate="no"
+      className="min-h-screen flex flex-col bg-gray-100 select-none [&_input]:select-text"
+      style={{ touchAction: 'pan-x pan-y', WebkitTouchCallout: 'none' }}
+    >
+      {!started ? (
+        /* ── Welcome screen (shown while nobody is ordering) ── */
+        <div className="flex-1 flex flex-col items-center justify-center gap-10 px-6 py-12 bg-[var(--brand-black)] text-white text-center">
+          <NextImage src={logo} alt="Magic Track — Car Wash & Auto Care" className="w-[min(520px,80vw)] h-auto" priority />
+          <div>
+            <h1 className="text-5xl sm:text-6xl font-black tracking-tight">Welcome to Magic Track</h1>
+            <p className="text-4xl sm:text-5xl font-bold text-white/80 mt-3" dir="rtl" lang="ar">أهلاً بكم في ماجيك تراك</p>
+          </div>
+          <div className="flex flex-wrap items-stretch justify-center gap-5">
+            <button
+              type="button"
+              onClick={() => begin('en')}
+              className="flex items-center gap-3 px-12 py-7 text-3xl font-extrabold bg-[var(--primary)] text-white hover:bg-[var(--primary-hover)] active:scale-[0.98] transition"
+            >
+              <Hand className="w-8 h-8" aria-hidden="true" /> Start order
+            </button>
+            <button
+              type="button"
+              onClick={() => begin('ar')}
+              dir="rtl"
+              lang="ar"
+              className="flex items-center gap-3 px-12 py-7 text-3xl font-extrabold bg-white text-gray-900 hover:bg-gray-100 active:scale-[0.98] transition"
+            >
+              <Hand className="w-8 h-8" aria-hidden="true" /> ابدأ الطلب
+            </button>
+          </div>
+          <p className="text-2xl text-white/60 animate-pulse">
+            Touch a button to start your order · <span dir="rtl" lang="ar">اختر لغة لبدء طلبك</span>
+          </p>
+        </div>
+      ) : (
+      <>
       {/* Header */}
       <header className="bg-[var(--brand-black)] border-b-[3px] border-[var(--primary)] px-4 sm:px-8 py-3 flex items-center justify-between gap-4">
         <NextImage src={logo} alt="Magic Track — Car Wash & Auto Care" className="h-16 w-auto" priority />
@@ -490,11 +590,11 @@ export default function KioskPage() {
             </p>
             <p className="text-2xl font-extrabold text-gray-900 mt-2">{t('Total')}: {qar(done.total)}</p>
             <p className="text-base text-gray-500 mt-4">
-              {t('Please pay at the counter.')} {t('Drive to the wash bay when your number is called.')}
+              {t('Please pay at the counter.')} {t('Watch the queue screen for your number.')}
             </p>
             <button
               type="button"
-              onClick={startOver}
+              onClick={resetKiosk}
               className="mt-8 w-full py-5 text-xl font-extrabold bg-[var(--primary)] text-white hover:bg-[var(--primary-hover)] transition-colors"
             >
               {t('Start new order')}
@@ -633,6 +733,27 @@ export default function KioskPage() {
               </div>
             </div>
           </aside>
+        </div>
+      )}
+      </>
+      )}
+
+      {/* ── "Are you still there?" ── */}
+      {idleLeft !== null && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-6" role="alertdialog" aria-modal="true" aria-labelledby="idle-title">
+          <div className="bg-white max-w-lg w-full text-center px-8 py-10 animate-fade-in-scale">
+            <h2 id="idle-title" className="text-4xl font-bold text-gray-900">{t('Are you still there?')}</h2>
+            <p className="text-lg text-gray-500 mt-3">{t('Tap anywhere to continue your order.')}</p>
+            <p className="text-lg text-gray-700 mt-6">{t('Starting over in')}</p>
+            <div className="text-7xl font-black text-[var(--primary)] leading-none mt-2 tabular-nums">{idleLeft}</div>
+            <button
+              type="button"
+              onClick={() => setIdleLeft(null)}
+              className="mt-8 w-full py-5 text-xl font-extrabold bg-[var(--primary)] text-white hover:bg-[var(--primary-hover)] transition-colors"
+            >
+              {t("I'm still here")}
+            </button>
+          </div>
         </div>
       )}
     </div>
