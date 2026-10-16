@@ -18,8 +18,9 @@
 //                    have 'paid' / 'unpaid' here instead; they read as 'collected'.
 //   Service          'car wash'  (appointments: 'appointment')
 //   service_type     where the order came from: 'walk-in' (dashboard) | 'kiosk' | 'appointment'
-//   package / sub_Service   main service (appointments: Detailing / Polishing / Graphene)
-//   package_price    main service price for the vehicle
+//   package / sub_Service   main service(s), comma separated, e.g. "Body Wash – In & Out, Nano Ceramic Tint"
+//                    (appointments: Detailing / Polishing / Graphene)
+//   package_price    price of the main service(s) for the vehicle
 //   car_name         vehicle type      car_number   number plate
 //   add_ons          other services, comma separated      add_ons_price  their total
 //   payment_method   Cash / Card
@@ -38,7 +39,7 @@
 
 import { bookingService } from './axiosInstance';
 import { extractArray } from './extractArray';
-import { servicePrice, findExtra } from './priceList';
+import { servicesPrice, findExtra, joinServices, splitServices } from './priceList';
 
 
 export const CAR_WASH_SERVICE = 'car wash';
@@ -100,7 +101,8 @@ export function mapBookingToOrder(b) {
     source: isKiosk ? 'kiosk' : 'dashboard',
     queue: queueNumberFor(b),
     customer: { name: b.passenger_name || 'Walk-in customer', phone: b.contact_number || '' },
-    service: b.package || b.sub_Service || '',
+    services: splitServices(b.package || b.sub_Service),
+    service: joinServices(splitServices(b.package || b.sub_Service)), // for display and search
     vehicle: b.car_name || '',
     extras: splitList(b.add_ons),
     numberPlate: b.car_number || '',
@@ -177,13 +179,16 @@ export async function fetchCarWashOrders() {
 
 /**
  * Creates a car wash order. `values` is what NewOrderModal / the kiosk collect:
- * customerName, phone, service, vehicle, extras[], numberPlate, date, time,
+ * customerName, phone, services[], vehicle, extras[], numberPlate, date, time,
  * discount, couponSerial, paymentMethod, paymentType, paymentStatus, subtotal,
  * total, notes.
  */
 export async function createCarWashOrder(values, source = ORDER_SOURCE.DASHBOARD) {
   const extrasTotal = (values.extras || []).reduce((sum, name) => sum + (findExtra(name)?.price ?? 0), 0);
-  const mainPrice = values.service ? servicePrice(values.service, values.vehicle) : undefined;
+  // values.services = list of main services (older callers pass one values.service).
+  const services = values.services ?? (values.service ? [values.service] : []);
+  const mainService = joinServices(services) || undefined;
+  const mainPrice = services.length ? servicesPrice(services, values.vehicle) : undefined;
   const status = values.paymentStatus === 'paid' ? 'paid' : 'unpaid';
   const fields = {
     status: 'waiting',
@@ -191,8 +196,8 @@ export async function createCarWashOrder(values, source = ORDER_SOURCE.DASHBOARD
     service_type: source,
     passenger_name: values.customerName,
     contact_number: values.phone,
-    package: values.service,
-    sub_Service: values.service,
+    package: mainService,
+    sub_Service: mainService,
     package_price: mainPrice,
     car_name: values.vehicle,
     car_number: values.numberPlate,

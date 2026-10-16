@@ -5,12 +5,12 @@ import { Loader, X, User, Droplets, Clock, CreditCard, Tag, AlertCircle } from '
 import { useFocusTrap } from '@/app/hooks/useFocusTrap';
 import {
   SERVICE_GROUPS, EXTRAS, OTHER_SERVICES_TITLE, DISCOUNTS, PAYMENT_METHODS, PAYMENT_TYPES, COUPON_RATE,
-  vehiclesForService, servicePrice, priceFor, applyDiscount, couponApplies,
+  vehiclesForServices, servicesPrice, priceFor, applyDiscount, couponApplies,
 } from '../../utils/priceList';
 
 /**
  * Manual order entry — the person running the car wash center enters each
- * customer who comes in. Services, vehicle types and other services follow the
+ * customer who comes in. One or more services, the vehicle type and other services follow the
  * Magic Track price list; the total is suggested from it (a coupon takes 50% off)
  * and stays editable.
  *
@@ -33,7 +33,7 @@ const nowLocal = () => {
 const EMPTY_FORM = {
   customerName: '',
   phone: '',
-  service: '',
+  services: [],
   vehicle: '',
   extras: [],
   numberPlate: '',
@@ -80,10 +80,10 @@ export default function NewOrderModal({ onClose, onSubmit }) {
     return () => { document.body.style.overflow = ''; };
   }, []);
 
-  const vehicleOptions = vehiclesForService(form.service);
+  const vehicleOptions = vehiclesForServices(form.services);
   const subtotal = useMemo(
-    () => priceFor(form.service, form.vehicle, form.extras),
-    [form.service, form.vehicle, form.extras]
+    () => priceFor(form.services, form.vehicle, form.extras),
+    [form.services, form.vehicle, form.extras]
   );
   const couponOn = couponApplies(form.discount, form.couponSerial);
   const calculatedTotal = applyDiscount(subtotal, form.discount, form.couponSerial);
@@ -100,12 +100,20 @@ export default function NewOrderModal({ onClose, onSubmit }) {
     const { name, value } = e.target;
     setForm((prev) => {
       const next = { ...prev, [name]: value };
-      // PPF and wash services use different vehicle sizes — drop a vehicle the new service doesn't offer.
-      if (name === 'service' && !vehiclesForService(value).includes(prev.vehicle)) next.vehicle = '';
       if (name === 'discount' && value !== 'Coupon') next.couponSerial = '';
       return next;
     });
     clearError(name);
+  };
+
+  const toggleService = (name) => {
+    setForm((prev) => {
+      const services = prev.services.includes(name) ? prev.services.filter((x) => x !== name) : [...prev.services, name];
+      // PPF and wash services use different vehicle sizes — drop a vehicle the services don't all offer.
+      const vehicle = vehiclesForServices(services).includes(prev.vehicle) ? prev.vehicle : '';
+      return { ...prev, services, vehicle };
+    });
+    clearError('service');
   };
 
   const toggleExtra = (name) => {
@@ -133,7 +141,7 @@ export default function NewOrderModal({ onClose, onSubmit }) {
     if (!values.customerName) next.customerName = 'Customer name is required';
     if (!values.phone) next.phone = 'Phone number is required';
     else if (values.phone.replace(/\D/g, '').length < 7) next.phone = 'Enter a valid phone number';
-    if (!values.service && values.extras.length === 0) next.service = 'Choose a service or at least one other service';
+    if (values.services.length === 0 && values.extras.length === 0) next.service = 'Choose a service or at least one other service';
     if (!values.vehicle) next.vehicle = 'Vehicle type is required';
     if (!values.date) next.date = 'Date is required';
     if (!values.time) next.time = 'Time is required';
@@ -214,35 +222,66 @@ export default function NewOrderModal({ onClose, onSubmit }) {
 
             {/* Service */}
             <SectionHeader icon={Droplets} title="Service" />
-            <div>
-              <label htmlFor="new-order-service">Service</label>
-              <select {...fieldProps('service')}>
-                <option value="">Select service</option>
-                {SERVICE_GROUPS.map((group) => (
-                  <optgroup key={group.key} label={group.title}>
-                    {group.services.map((s) => (
-                      <option key={s.name} value={s.name}>{s.name}</option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
+            <fieldset className="md:col-span-2" aria-describedby={errors.service ? 'new-order-service-error' : 'new-order-service-hint'}>
+              <legend className="block text-[13px] font-medium text-gray-700 mb-1.5">Services</legend>
+              {SERVICE_GROUPS.map((group) => (
+                <div key={group.key} className="mb-2 last:mb-0">
+                  <div className="text-[11px] font-semibold text-gray-500 mb-1">{group.title}</div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {group.services.map((svc) => {
+                      const checked = form.services.includes(svc.name);
+                      const price = form.vehicle ? svc.prices[form.vehicle] : undefined;
+                      const unavailable = form.vehicle && price === undefined;
+                      return (
+                        <label
+                          key={svc.name}
+                          className={`flex items-center gap-2.5 px-3 py-2 mb-0 border text-sm font-normal cursor-pointer transition-colors ${
+                            checked ? 'border-[var(--primary)] bg-[var(--primary-light)]' : 'border-gray-200 hover:border-gray-300'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleService(svc.name)}
+                            className="w-4 h-4 accent-[var(--primary)]"
+                          />
+                          <span className="flex-1 text-gray-800">{svc.name}</span>
+                          <span className="text-xs text-gray-500 whitespace-nowrap">
+                            {unavailable
+                              ? `Not for ${form.vehicle}`
+                              : price !== undefined
+                              ? `QAR ${price.toLocaleString('en-US')}`
+                              : `From QAR ${Math.min(...Object.values(svc.prices)).toLocaleString('en-US')}`}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
               <FieldError id="new-order-service-error" message={errors.service} />
               {!errors.service && (
-                <p className="mt-1 text-[11px] text-gray-500">Leave empty if the customer only wants other services.</p>
+                <p id="new-order-service-hint" className="mt-1 text-[11px] text-gray-500">
+                  Tick one or more. Leave empty if the customer only wants other services.
+                </p>
               )}
-            </div>
+            </fieldset>
             <div>
               <label htmlFor="new-order-vehicle">Vehicle Type<Required /></label>
               <select {...fieldProps('vehicle')}>
                 <option value="">Select vehicle type</option>
                 {vehicleOptions.map((v) => {
-                  const price = servicePrice(form.service, v);
+                  const price = servicesPrice(form.services, v);
                   return (
                     <option key={v} value={v}>{v}{price !== undefined ? ` — QAR ${price.toLocaleString('en-US')}` : ''}</option>
                   );
                 })}
               </select>
               <FieldError id="new-order-vehicle-error" message={errors.vehicle} />
+            </div>
+            <div>
+              <label htmlFor="new-order-numberPlate">Number Plate</label>
+              <input {...fieldProps('numberPlate')} placeholder="e.g. 123456" autoComplete="off" />
             </div>
             <div className="md:col-span-2">
               <span className="block text-[13px] font-medium text-gray-700 mb-1.5">{OTHER_SERVICES_TITLE}</span>
@@ -270,10 +309,6 @@ export default function NewOrderModal({ onClose, onSubmit }) {
                   );
                 })}
               </div>
-            </div>
-            <div>
-              <label htmlFor="new-order-numberPlate">Number Plate</label>
-              <input {...fieldProps('numberPlate')} placeholder="e.g. 123456" autoComplete="off" />
             </div>
 
             {/* Date & time */}

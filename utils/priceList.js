@@ -86,9 +86,33 @@ export const servicePrice = (name, vehicle) => findService(name)?.service.prices
 
 export const findExtra = (name) => EXTRAS.find((e) => e.name === name);
 
-/** Service + extras, straight from the price list. */
-export function priceFor(service, vehicle, extras = []) {
-  const base = servicePrice(service, vehicle) ?? 0;
+// ── Several main services in one order (e.g. Body Wash + Nano Ceramic Tint + PPF) ──
+// Saved on the backend as one comma-separated text; no service name has a comma.
+const SERVICE_SEPARATOR = ', ';
+export const joinServices = (list) => (list || []).filter(Boolean).join(SERVICE_SEPARATOR);
+export const splitServices = (text) => String(text || '').split(',').map((s) => s.trim()).filter(Boolean);
+const asList = (services) => (Array.isArray(services) ? services : splitServices(services));
+
+/** Vehicles every chosen service is priced for (PPF and wash use different sizes). */
+export const vehiclesForServices = (services) =>
+  asList(services).reduce((allowed, name) => allowed.filter((v) => vehiclesForService(name).includes(v)), ALL_VEHICLES);
+
+/** Sum of the chosen services for a vehicle, or undefined when one of them has no price for it. */
+export function servicesPrice(services, vehicle) {
+  const list = asList(services);
+  if (list.length === 0) return undefined;
+  let sum = 0;
+  for (const name of list) {
+    const price = servicePrice(name, vehicle);
+    if (price === undefined) return undefined;
+    sum += price;
+  }
+  return sum;
+}
+
+/** Services (one name, a list, or comma-separated text) + extras, straight from the price list. */
+export function priceFor(services, vehicle, extras = []) {
+  const base = servicesPrice(services, vehicle) ?? 0;
   return extras.reduce((sum, name) => sum + (findExtra(name)?.price ?? 0), base);
 }
 

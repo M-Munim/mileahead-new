@@ -73,8 +73,9 @@ function buildCustomers(orders) {
   return [...groups.entries()].map(([key, list]) => {
     const serviceCount = new Map();
     list.forEach((o) => {
-      const svc = o.service || `${OTHER_SERVICES_TITLE} only`;
-      serviceCount.set(svc, (serviceCount.get(svc) || 0) + 1);
+      // An order can have several main services; each one counts.
+      const names = o.services?.length ? o.services : [`${OTHER_SERVICES_TITLE} only`];
+      names.forEach((svc) => serviceCount.set(svc, (serviceCount.get(svc) || 0) + 1));
     });
     const favourite = [...serviceCount.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || '';
     const customer = {

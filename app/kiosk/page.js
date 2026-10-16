@@ -3,20 +3,21 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import NextImage from 'next/image';
 import {
-  Droplets, Sparkles, Gem, Armchair, WandSparkles, Sun, ShieldCheck, Shield, Plus,
+  Droplets, Sparkles, Gem, Armchair, WandSparkles, Sun, ShieldCheck, Shield, Tag, Award, Building2,
   Car, CarFront, Bus, Truck, Banknote, CreditCard, Zap, Clock, Handshake, Check,
   Languages, ArrowLeft, ArrowRight, CircleCheck, Ticket, AlertCircle, Loader2, Hand,
 } from 'lucide-react';
 import logo from '../../public/magic-track-logo.png';
 import {
-  SERVICE_GROUPS, EXTRAS, PAYMENT_METHODS, PAYMENT_TYPES, COUPON_RATE,
-  vehiclesForService, servicePrice, priceFor, applyDiscount, couponApplies,
+  SERVICE_GROUPS, EXTRAS, PAYMENT_METHODS, PAYMENT_TYPES, DISCOUNTS, COUPON_RATE,
+  vehiclesForServices, servicesPrice, servicePrice, priceFor, applyDiscount, couponApplies,
 } from '../../utils/priceList';
 import { createCarWashOrder, ORDER_SOURCE } from '../../utils/carWashApi';
 
 /**
  * Customer self-service screen, placed at the front of the car wash center.
- * The customer picks the same options staff have in "New Order", places the
+ * The customer fills in the same fields staff have in "New Order" (one or more
+ * services, car type, other services, details, discount, payment), places the
  * order and gets a queue number. The order is saved on the backend as a
  * booking with service_type = 'kiosk' (no login needed) and shows up on the
  * dashboard as Unpaid on any device.
@@ -30,8 +31,6 @@ import { createCarWashOrder, ORDER_SOURCE } from '../../utils/carWashApi';
 // ─────────────────────────────────────────────────────────────
 // Options
 // ─────────────────────────────────────────────────────────────
-const OTHER_ONLY = '__other_only__';
-
 const SERVICE_ICONS = {
   'Body Wash – In & Out': Droplets,
   'Body Polishing': Sparkles,
@@ -46,6 +45,7 @@ const SERVICE_ICONS = {
 const VEHICLE_ICONS = { Sedan: Car, Crossover: CarFront, SUV: CarFront, '7-Seater': Bus, 'GMC / Large SUV': Truck };
 const METHOD_ICONS = { Cash: Banknote, Card: CreditCard };
 const TYPE_ICONS = { Fawran: Zap, Paylater: Clock, 'Partner Credit': Handshake };
+const DISCOUNT_ICONS = { Coupon: Ticket, 'Loyalty Free': Award, 'Fleet Discount': Building2 };
 
 const SLOTS = [
   { key: 'Now', minutes: 0 },
@@ -76,6 +76,14 @@ const AR = {
   'From': 'من', 'What are you driving?': 'ما نوع سيارتك؟', 'Price depends on your car size.': 'السعر حسب حجم السيارة.',
   'Add other services': 'أضف خدمات أخرى', 'Optional. Tap to add or remove.': 'اختياري. المس للإضافة أو الإزالة.',
   'Choose at least one service.': 'اختر خدمة واحدة على الأقل.',
+  'Tap one or more services.': 'اختر خدمة واحدة أو أكثر.',
+  'Only want seat covers or floor mats? Skip to step 3.': 'تريد أغطية المقاعد أو دواسات الأرضية فقط؟ انتقل إلى الخطوة 3.',
+  'Not available for': 'غير متوفرة لـ', 'services': 'خدمات',
+  'Your details': 'بياناتك', 'Discount': 'الخصم', 'No discount': 'بدون خصم', 'Payment': 'الدفع',
+  'Loyalty Free': 'مجاناً (برنامج الولاء)', 'Fleet Discount': 'خصم الأسطول',
+  'Our staff will confirm this discount at the counter.': 'سيؤكد الموظفون هذا الخصم عند الكاشير.',
+  'Enter your coupon number': 'أدخل رقم القسيمة',
+  'Notes': 'ملاحظات', 'Anything we should know?': 'هل هناك ما يجب أن نعرفه؟',
   'Your details and payment': 'بياناتك والدفع', 'Fill in your details and choose how to pay.': 'أدخل بياناتك واختر طريقة الدفع.',
   'Your name': 'اسمك', '(optional)': '(اختياري)', 'Mobile number': 'رقم الجوال', 'Plate number': 'رقم اللوحة',
   'Coupon number': 'رقم القسيمة', 'Payment method': 'طريقة الدفع', 'Payment type': 'نوع الدفع',
@@ -90,7 +98,7 @@ const AR = {
   'Placing your order…': 'جارٍ إرسال طلبك…',
   'Enter a valid mobile number': 'أدخل رقم جوال صحيح',
   'Still needed:': 'مطلوب أيضاً:', 'Choose a service': 'اختر خدمة', 'Choose your car type': 'اختر نوع السيارة',
-  'Choose at least one other service': 'اختر خدمة أخرى واحدة على الأقل',
+  'Choose a service or another service': 'اختر خدمة أو خدمة أخرى',
   'Choose a service first to see prices.': 'اختر خدمة أولاً لعرض الأسعار.',
   Now: 'الآن', '15 min': '15 دقيقة', '30 min': '30 دقيقة', '45 min': '45 دقيقة', '1 hour': 'ساعة', '2 hours': 'ساعتان',
   // Price list
@@ -116,8 +124,8 @@ const startAt = (offsetMinutes = 0) => {
 };
 
 const FRESH = {
-  step: 0, service: '', vehicle: '', extras: [], name: '', phone: '', plate: '',
-  coupon: '', paymentMethod: '', paymentType: '', slot: 'Now',
+  step: 0, services: [], vehicle: '', extras: [], name: '', phone: '', plate: '',
+  discount: '', coupon: '', paymentMethod: '', paymentType: '', slot: 'Now', notes: '',
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -174,40 +182,43 @@ export default function KioskPage() {
     return ar ? `${v} ر.ق` : `QAR ${v}`;
   };
 
-  const realService = s.service === OTHER_ONLY ? '' : s.service;
-  const vehicleOptions = vehiclesForService(realService);
-  const subtotal = useMemo(() => priceFor(realService, s.vehicle, s.extras), [realService, s.vehicle, s.extras]);
-  const couponOn = couponApplies('Coupon', s.coupon);
-  const total = applyDiscount(subtotal, couponOn ? 'Coupon' : '', s.coupon);
+  const vehicleOptions = vehiclesForServices(s.services);
+  const subtotal = useMemo(() => priceFor(s.services, s.vehicle, s.extras), [s.services, s.vehicle, s.extras]);
+  const couponOn = couponApplies(s.discount, s.coupon);
+  const total = applyDiscount(subtotal, s.discount, s.coupon);
+  const hasSomething = s.services.length > 0 || s.extras.length > 0;
   const hasStartingPrice = s.extras.some((n) => EXTRAS.find((e) => e.name === n)?.from);
   const phoneOk = s.phone.replace(/\D/g, '').length >= 7;
 
   // A step is complete when everything it asks for is filled in.
+  // Same rules as the New Order form. The plate stays required here: staff
+  // need it to find the car, and the queue screen shows it.
+  const couponMissing = s.discount === 'Coupon' && !s.coupon.trim();
   const stepOk = [
-    s.service !== '',
+    hasSomething,
     s.vehicle !== '',
-    s.service !== OTHER_ONLY || s.extras.length > 0,
-    phoneOk && s.plate.trim() !== '' && s.paymentMethod !== '' && s.paymentType !== '',
+    hasSomething,
+    s.name.trim() !== '' && phoneOk && s.plate.trim() !== '' && s.paymentMethod !== '' && !couponMissing,
   ];
   const firstIncomplete = stepOk.findIndex((ok) => !ok);
   const missing = [
-    !stepOk[0] && { step: 0, label: 'Choose a service' },
+    !hasSomething && { step: 0, label: 'Choose a service or another service' },
     !stepOk[1] && { step: 1, label: 'Choose your car type' },
-    !stepOk[2] && { step: 2, label: 'Choose at least one other service' },
+    !s.name.trim() && { step: 3, label: 'Your name' },
     !phoneOk && { step: 3, label: 'Mobile number' },
     !s.plate.trim() && { step: 3, label: 'Plate number' },
+    couponMissing && { step: 3, label: 'Coupon number' },
     !s.paymentMethod && { step: 3, label: 'Payment method' },
-    !s.paymentType && { step: 3, label: 'Payment type' },
   ].filter(Boolean);
 
   const set = (changes) => setS((prev) => ({ ...prev, ...changes }));
 
-  const chooseService = (name) => {
+  const toggleService = (name) => {
     setS((prev) => {
-      const next = { ...prev, service: name };
-      const allowed = vehiclesForService(name === OTHER_ONLY ? '' : name);
-      if (!allowed.includes(prev.vehicle)) next.vehicle = '';
-      return next;
+      const services = prev.services.includes(name) ? prev.services.filter((x) => x !== name) : [...prev.services, name];
+      // PPF and wash services use different car sizes — drop a car type they don't all offer.
+      const vehicle = vehiclesForServices(services).includes(prev.vehicle) ? prev.vehicle : '';
+      return { ...prev, services, vehicle };
     });
   };
 
@@ -242,24 +253,24 @@ export default function KioskPage() {
     setSaveError(false);
     try {
       const created = await createCarWashOrder({
-        customerName: s.name.trim() || 'Walk-in customer',
+        customerName: s.name.trim(),
         phone: s.phone.trim(),
-        service: realService,
+        services: s.services,
         vehicle: s.vehicle,
         extras: s.extras,
         numberPlate: s.plate.trim(),
         ...startAt(slot.minutes),
-        discount: couponOn ? 'Coupon' : '',
-        couponSerial: couponOn ? s.coupon.trim() : '',
+        discount: s.discount,
+        couponSerial: s.discount === 'Coupon' ? s.coupon.trim() : '',
         paymentMethod: s.paymentMethod,
         paymentType: s.paymentType,
         paymentStatus: 'unpaid',
         subtotal,
         total,
-        notes: slot.minutes ? `Customer wants to start in ${slot.key}` : '',
+        notes: [slot.minutes ? `Customer wants to start in ${slot.key}` : '', s.notes.trim()].filter(Boolean).join(' · '),
       }, ORDER_SOURCE.KIOSK);
       setSecondsLeft(DONE_RESET_SECONDS);
-      setDone({ queue: created?.queue || '—', slot: slot.key, service: realService, vehicle: s.vehicle, total });
+      setDone({ queue: created?.queue || '—', slot: slot.key, services: s.services, vehicle: s.vehicle, total });
     } catch (error) {
       console.error('Kiosk order error:', error);
       setSaveError(true);
@@ -326,13 +337,10 @@ export default function KioskPage() {
 
   // ── Order summary lines ────────────────────────────────────
   const lines = [];
-  if (s.service) {
-    lines.push({
-      label: realService ? t(realService) : t('Other services only'),
-      sub: s.vehicle ? t(s.vehicle) : '',
-      price: realService && s.vehicle ? qar(servicePrice(realService, s.vehicle)) : '',
-    });
-  }
+  s.services.forEach((name) => {
+    const price = s.vehicle ? servicePrice(name, s.vehicle) : undefined;
+    lines.push({ label: t(name), sub: s.vehicle ? t(s.vehicle) : '', price: price !== undefined ? qar(price) : '' });
+  });
   s.extras.forEach((name) => {
     const extra = EXTRAS.find((e) => e.name === name);
     lines.push({ label: t(name), price: `${extra?.from ? `${t('From')} ` : ''}${qar(extra?.price)}` });
@@ -344,36 +352,29 @@ export default function KioskPage() {
     content = (
       <>
         <h2 className="text-3xl font-bold text-gray-900">{t('Choose your service')}</h2>
-        <p className="text-lg text-gray-500 mt-1 mb-6">{t('Tap the service you want today.')}</p>
+        <p className="text-lg text-gray-500 mt-1 mb-6">{t('Tap one or more services.')} {t('Only want seat covers or floor mats? Skip to step 3.')}</p>
         {SERVICE_GROUPS.map((group) => (
           <div key={group.key} className="mb-6">
             <h3 className="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-3">{t(group.title)}</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
               {group.services.map((svc) => {
                 const from = Math.min(...Object.values(svc.prices));
+                const forCar = s.vehicle ? svc.prices[s.vehicle] : undefined;
                 return (
                   <Tile
                     key={svc.name}
-                    selected={s.service === svc.name}
-                    onClick={() => chooseService(svc.name)}
+                    selected={s.services.includes(svc.name)}
+                    onClick={() => toggleService(svc.name)}
                     icon={SERVICE_ICONS[svc.name]}
                     title={t(svc.name)}
-                    price={`${t('From')} ${qar(from)}`}
+                    subtitle={s.vehicle && forCar === undefined ? `${t('Not available for')} ${t(s.vehicle)}` : ''}
+                    price={forCar !== undefined ? qar(forCar) : `${t('From')} ${qar(from)}`}
                   />
                 );
               })}
             </div>
           </div>
         ))}
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-          <Tile
-            selected={s.service === OTHER_ONLY}
-            onClick={() => chooseService(OTHER_ONLY)}
-            icon={Plus}
-            title={t('Other services only')}
-            subtitle={t('Seat covers, floor mats and more')}
-          />
-        </div>
       </>
     );
   } else if (s.step === 1) {
@@ -381,11 +382,11 @@ export default function KioskPage() {
       <>
         <h2 className="text-3xl font-bold text-gray-900">{t('What are you driving?')}</h2>
         <p className="text-lg text-gray-500 mt-1 mb-6">
-          {t('Price depends on your car size.')}{!s.service && <> {t('Choose a service first to see prices.')}</>}
+          {t('Price depends on your car size.')}{s.services.length === 0 && <> {t('Choose a service first to see prices.')}</>}
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
           {vehicleOptions.map((v) => {
-            const price = servicePrice(realService, v);
+            const price = servicesPrice(s.services, v);
             return (
               <Tile
                 key={v}
@@ -393,7 +394,7 @@ export default function KioskPage() {
                 onClick={() => set({ vehicle: v })}
                 icon={VEHICLE_ICONS[v] || Car}
                 title={t(v)}
-                subtitle={realService ? t(realService) : ''}
+                subtitle={s.services.length === 1 ? t(s.services[0]) : s.services.length > 1 ? `${s.services.length} ${t('services')}` : ''}
                 price={price !== undefined ? qar(price) : ''}
               />
             );
@@ -406,7 +407,7 @@ export default function KioskPage() {
       <>
         <h2 className="text-3xl font-bold text-gray-900">{t('Add other services')}</h2>
         <p className="text-lg text-gray-500 mt-1 mb-6">
-          {s.service === OTHER_ONLY ? t('Choose at least one service.') : t('Optional. Tap to add or remove.')}
+          {s.services.length === 0 ? t('Choose at least one service.') : t('Optional. Tap to add or remove.')}
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
           {EXTRAS.map((extra) => (
@@ -423,23 +424,24 @@ export default function KioskPage() {
       </>
     );
   } else {
-    const choiceRow = (options, value, field, icons) => (
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+    // `optional`: tapping the chosen button again clears it.
+    const choiceRow = (options, value, field, icons, { optional = false, labels = {} } = {}) => (
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {options.map((o) => {
           const Icon = icons[o];
           const on = value === o;
           return (
             <button
-              key={o}
+              key={o || 'none'}
               type="button"
               aria-pressed={on}
-              onClick={() => set({ [field]: o })}
+              onClick={() => set({ [field]: on && optional ? '' : o, ...(field === 'discount' && o !== 'Coupon' ? { coupon: '' } : {}) })}
               className={`flex items-center justify-center gap-2 py-4 px-3 border-2 text-lg font-bold transition-colors ${
                 on ? 'border-[var(--primary)] bg-[var(--primary)] text-white' : 'border-gray-200 bg-white text-gray-800 hover:border-gray-300'
               }`}
             >
               {Icon && <Icon className="w-5 h-5" aria-hidden="true" />}
-              {t(o)}
+              {t(labels[o] || o)}
             </button>
           );
         })}
@@ -451,7 +453,14 @@ export default function KioskPage() {
         <h2 className="text-3xl font-bold text-gray-900">{t('Your details and payment')}</h2>
         <p className="text-lg text-gray-500 mt-1 mb-6">{t('Fill in your details and choose how to pay.')}</p>
 
+        <h3 className="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-3">{t('Your details')}</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label htmlFor="k-name" className="text-base font-semibold text-gray-700 mb-2">{t('Your name')} <span className="text-red-500">*</span></label>
+            <input
+              id="k-name" autoComplete="off" value={s.name} onChange={(e) => set({ name: e.target.value })} style={BIG_INPUT}
+            />
+          </div>
           <div>
             <label htmlFor="k-phone" className="text-base font-semibold text-gray-700 mb-2">{t('Mobile number')} <span className="text-red-500">*</span></label>
             <input
@@ -468,33 +477,37 @@ export default function KioskPage() {
               value={s.plate} onChange={(e) => set({ plate: e.target.value })} style={BIG_INPUT}
             />
           </div>
-          <div>
-            <label htmlFor="k-name" className="text-base font-semibold text-gray-700 mb-2">{t('Your name')} <span className="font-normal text-gray-400">{t('(optional)')}</span></label>
-            <input
-              id="k-name" autoComplete="off" value={s.name} onChange={(e) => set({ name: e.target.value })} style={BIG_INPUT}
-            />
-          </div>
-          <div>
-            <label htmlFor="k-coupon" className="text-base font-semibold text-gray-700 mb-2">{t('Coupon number')} <span className="font-normal text-gray-400">{t('(optional)')}</span></label>
-            <input
-              id="k-coupon" dir="ltr" autoComplete="off" placeholder="MT-0000"
-              value={s.coupon} onChange={(e) => set({ coupon: e.target.value })} style={BIG_INPUT}
-            />
-            {couponOn && (
-              <p className="mt-1 text-sm font-semibold text-green-700 flex items-center gap-1.5">
-                <Ticket className="w-4 h-4" aria-hidden="true" /> {t('Coupon applied')}: {COUPON_RATE * 100}% {t('off')}
-              </p>
-            )}
-          </div>
         </div>
 
-        <div className="mt-6">
+        <div className="mt-7">
+          <h3 className="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-3">{t('Discount')}</h3>
+          {choiceRow(['', ...DISCOUNTS], s.discount, 'discount', DISCOUNT_ICONS, { labels: { '': 'No discount' } })}
+          {s.discount === 'Coupon' && (
+            <div className="mt-4 max-w-md">
+              <label htmlFor="k-coupon" className="text-base font-semibold text-gray-700 mb-2">{t('Coupon number')} <span className="text-red-500">*</span></label>
+              <input
+                id="k-coupon" dir="ltr" autoComplete="off" placeholder="MT-0000"
+                value={s.coupon} onChange={(e) => set({ coupon: e.target.value })} style={BIG_INPUT}
+              />
+              <p className={`mt-1 text-sm font-semibold flex items-center gap-1.5 ${couponOn ? 'text-green-700' : 'text-gray-500'}`}>
+                <Ticket className="w-4 h-4" aria-hidden="true" />
+                {couponOn ? `${t('Coupon applied')}: ${COUPON_RATE * 100}% ${t('off')}` : t('Enter your coupon number')}
+              </p>
+            </div>
+          )}
+          {(s.discount === 'Loyalty Free' || s.discount === 'Fleet Discount') && (
+            <p className="mt-3 text-base text-gray-600 flex items-center gap-2">
+              <Tag className="w-4 h-4 text-[var(--primary)]" aria-hidden="true" /> {t('Our staff will confirm this discount at the counter.')}
+            </p>
+          )}
+        </div>
+
+        <div className="mt-7">
+          <h3 className="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-3">{t('Payment')}</h3>
           <span className="block text-base font-semibold text-gray-700 mb-2">{t('Payment method')} <span className="text-red-500">*</span></span>
           {choiceRow(PAYMENT_METHODS, s.paymentMethod, 'paymentMethod', METHOD_ICONS)}
-        </div>
-        <div className="mt-5">
-          <span className="block text-base font-semibold text-gray-700 mb-2">{t('Payment type')} <span className="text-red-500">*</span></span>
-          {choiceRow(PAYMENT_TYPES, s.paymentType, 'paymentType', TYPE_ICONS)}
+          <span className="block text-base font-semibold text-gray-700 mt-5 mb-2">{t('Payment type')} <span className="font-normal text-gray-400">{t('(optional)')}</span></span>
+          {choiceRow(PAYMENT_TYPES, s.paymentType, 'paymentType', TYPE_ICONS, { optional: true })}
         </div>
 
         <div className="mt-6">
@@ -518,6 +531,14 @@ export default function KioskPage() {
             })}
           </div>
         </div>
+
+        <div className="mt-6">
+          <label htmlFor="k-notes" className="text-base font-semibold text-gray-700 mb-2">{t('Notes')} <span className="font-normal text-gray-400">{t('(optional)')}</span></label>
+          <textarea
+            id="k-notes" rows={2} autoComplete="off" placeholder={t('Anything we should know?')}
+            value={s.notes} onChange={(e) => set({ notes: e.target.value })} style={BIG_INPUT}
+          />
+        </div>
       </>
     );
   }
@@ -527,7 +548,7 @@ export default function KioskPage() {
       dir={ar ? 'rtl' : 'ltr'}
       lang={lang}
       translate="no"
-      className="min-h-screen flex flex-col bg-gray-100 select-none [&_input]:select-text"
+      className="min-h-screen flex flex-col bg-gray-100 select-none [&_input]:select-text [&_textarea]:select-text"
       style={{ touchAction: 'pan-x pan-y', WebkitTouchCallout: 'none' }}
     >
       {!started ? (
@@ -585,7 +606,7 @@ export default function KioskPage() {
             <p className="text-lg text-gray-500 mt-6">{t('Your queue number')}</p>
             <div className="text-8xl font-black text-[var(--primary)] leading-none mt-2" dir="ltr">{done.queue}</div>
             <p className="text-lg text-gray-700 mt-6">
-              {done.service ? t(done.service) : t('Other services only')} · {t(done.vehicle)} ·{' '}
+              {done.services.length ? done.services.map(t).join(' + ') : t('Other services only')} · {t(done.vehicle)} ·{' '}
               {done.slot === 'Now' ? t('Starting now') : `${t('In')} ${t(done.slot)}`}
             </p>
             <p className="text-2xl font-extrabold text-gray-900 mt-2">{t('Total')}: {qar(done.total)}</p>
