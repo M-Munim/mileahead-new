@@ -46,8 +46,11 @@ api.interceptors.response.use(
                 localStorage.removeItem('token');
                 localStorage.removeItem('user');
                 localStorage.removeItem('userRole');
-                // Only redirect if not already on login page
-                if (!window.location.pathname.includes('/auth/login')) {
+                // Only redirect if not already on login page. Never from the customer
+                // kiosk or the queue TV: those show their own message instead.
+                const path = window.location.pathname;
+                const publicScreen = path.startsWith('/kiosk') || path.startsWith('/queue');
+                if (!path.includes('/auth/login') && !publicScreen) {
                     window.location.href = '/auth/login';
                 }
             }

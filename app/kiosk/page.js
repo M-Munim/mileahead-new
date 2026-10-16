@@ -171,7 +171,7 @@ export default function KioskPage() {
   const [lang, setLang] = useState('en');
   const [s, setS] = useState(FRESH);
   const [done, setDone] = useState(null); // { queue, slot, service, vehicle, total }
-  const [saveError, setSaveError] = useState(false);
+  const [saveError, setSaveError] = useState(false); // true, or 'login' when the server wants a staff login
   const [placing, setPlacing] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(DONE_RESET_SECONDS);
 
@@ -273,7 +273,8 @@ export default function KioskPage() {
       setDone({ queue: created?.queue || '—', slot: slot.key, services: s.services, vehicle: s.vehicle, total });
     } catch (error) {
       console.error('Kiosk order error:', error);
-      setSaveError(true);
+      // 401/403: the server needs a login to save orders. Staff log this screen in once.
+      setSaveError(error?.status === 401 || error?.status === 403 ? 'login' : true);
     } finally {
       setPlacing(false);
     }
@@ -702,7 +703,15 @@ export default function KioskPage() {
               {saveError && (
                 <p className="mt-3 flex items-start gap-2 text-sm text-red-700 bg-red-50 border border-red-200 px-3 py-2" role="alert">
                   <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" aria-hidden="true" />
-                  {t('Could not save your order. Please ask our staff for help.')}
+                  <span>
+                    {t('Could not save your order. Please ask our staff for help.')}
+                    {saveError === 'login' && (
+                      <>
+                        {' '}
+                        <a href="/auth/login?next=/kiosk" className="font-semibold underline" lang="en" dir="ltr">Staff: log in this screen</a>
+                      </>
+                    )}
+                  </span>
                 </p>
               )}
               {s.step === STEPS.length - 1 && missing.length > 0 && (

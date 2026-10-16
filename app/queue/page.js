@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import NextImage from 'next/image';
-import { Volume2, VolumeX, Maximize, WifiOff } from 'lucide-react';
+import { Volume2, VolumeX, Maximize, WifiOff, LogIn } from 'lucide-react';
 import logo from '../../public/magic-track-logo.png';
 import { fetchQueue } from '../../utils/carWashApi';
 
@@ -58,6 +58,7 @@ export default function QueuePage() {
   const [cars, setCars] = useState([]);
   const [loaded, setLoaded] = useState(false);
   const [offline, setOffline] = useState(false);
+  const [needsLogin, setNeedsLogin] = useState(false); // the order list needs a staff login
   const [clock, setClock] = useState('');
   const [newReady, setNewReady] = useState({}); // order id → time it became ready
   const [soundOn, setSoundOn] = useState(false);
@@ -80,9 +81,11 @@ export default function QueuePage() {
       readyIds.current = new Set(ready);
       setCars(list);
       setOffline(false);
+      setNeedsLogin(false);
     } catch (error) {
       console.error('Queue screen: could not load orders', error);
-      setOffline(true); // keep showing the last list
+      if (error?.status === 401 || error?.status === 403) setNeedsLogin(true);
+      else setOffline(true); // keep showing the last list
     } finally {
       setLoaded(true);
     }
@@ -149,6 +152,23 @@ export default function QueuePage() {
           )}
         </div>
       </header>
+
+      {needsLogin && (
+        <div className="fixed inset-0 z-50 bg-[var(--brand-black)]/95 flex items-center justify-center p-6" role="alert">
+          <div className="max-w-lg text-center">
+            <h2 className="text-4xl font-black">Staff login needed</h2>
+            <p className="text-xl text-white/70 mt-3">
+              The queue screen reads today&apos;s orders, which need a staff login. Log in once on this screen and it comes back here.
+            </p>
+            <a
+              href="/auth/login?next=/queue"
+              className="mt-8 inline-flex items-center gap-2 px-8 py-4 text-xl font-extrabold bg-[var(--primary)] text-white hover:bg-[var(--primary-hover)]"
+            >
+              <LogIn className="w-6 h-6" aria-hidden="true" /> Staff login
+            </a>
+          </div>
+        </div>
+      )}
 
       {/* Columns */}
       <main className="flex-1 grid grid-cols-1 md:grid-cols-[1fr_1fr_1.25fr] gap-5 p-6 min-h-0">

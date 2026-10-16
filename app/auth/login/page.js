@@ -9,6 +9,13 @@ import NextImage from 'next/image';
 import { Shield, UserCog } from 'lucide-react';
 import emblem from '../../../public/magic-track-emblem.png';
 
+// Where to go after login: ?next= from the queue screen (only our own pages), else the orders.
+const NEXT_PAGES = ['/orders', '/customer-data', '/queue', '/kiosk'];
+const nextPath = () => {
+  const next = new URLSearchParams(window.location.search).get('next');
+  return NEXT_PAGES.includes(next) ? next : '/orders';
+};
+
 export default function LoginPage() {
   const router = useRouter();
   const { login } = useAuth();
@@ -79,7 +86,8 @@ export default function LoginPage() {
       // The account's real role comes from the server. The card the user picked
       // is presentational only and must never grant privilege: if the API omits
       // the role we fall back to Manager (least privilege), never to Admin.
-      const accountRole = response.data.user?.role || ROLES.MANAGER;
+      // Normalised: the backend stores the manager role as "Manager " (capital, trailing space).
+      const accountRole = String(response.data.user?.role || ROLES.MANAGER).trim().toLowerCase();
 
       // Driver / cleaner accounts have no access to this panel.
       if (!isDashboardRole(accountRole)) {
@@ -104,7 +112,7 @@ export default function LoginPage() {
 
       setToast({ message: `Login successful as ${ROLE_NAMES[accountRole]}!`, type: 'success' });
       setTimeout(() => {
-        router.push('/orders');
+        router.push(nextPath());
       }, 800);
     } catch (error) {
       setToast({
