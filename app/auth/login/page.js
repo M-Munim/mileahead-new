@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Toast from '../../components/Toast';
 import { driverService } from '../../../utils/axiosInstance';
-import { useAuth, ROLES, ROLE_NAMES, isDashboardRole } from '../../contexts/AuthContext';
+import { useAuth, ROLES, ROLE_NAMES, roleFromServer } from '../../contexts/AuthContext';
 import NextImage from 'next/image';
 import { Shield, UserCog } from 'lucide-react';
 import emblem from '../../../public/magic-track-emblem.png';
@@ -22,28 +22,28 @@ export default function LoginPage() {
   const [formData, setFormData] = useState({
     identifier: '',
     password: '',
-    role: ROLES.ADMIN
+    role: ROLES.SUPER_ADMIN
   });
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState(null);
   const [errors, setErrors] = useState({});
 
   const roleConfig = {
-    [ROLES.ADMIN]: {
+    [ROLES.SUPER_ADMIN]: {
       icon: Shield,
       color: 'from-[var(--primary)] to-[var(--primary-dark)]',
       bgColor: 'bg-orange-50',
       borderColor: 'border-[var(--primary)]',
       textColor: 'text-orange-800',
-      description: 'Admin account'
+      description: 'Super Admin account'
     },
-    [ROLES.MANAGER]: {
+    [ROLES.ADMIN]: {
       icon: UserCog,
       color: 'from-neutral-700 to-neutral-900',
       bgColor: 'bg-gray-50',
       borderColor: 'border-neutral-800',
       textColor: 'text-neutral-900',
-      description: 'Manager account'
+      description: 'Admin account'
     }
   };
 
@@ -85,14 +85,13 @@ export default function LoginPage() {
 
       // The account's real role comes from the server. The card the user picked
       // is presentational only and must never grant privilege: if the API omits
-      // the role we fall back to Manager (least privilege), never to Admin.
-      // Normalised: the backend stores the manager role as "Manager " (capital, trailing space).
-      const accountRole = String(response.data.user?.role || ROLES.MANAGER).trim().toLowerCase();
+      // the role we fall back to Admin (no deleting), never to Super Admin.
+      const accountRole = roleFromServer(response.data.user?.role || 'manager');
 
       // Driver / cleaner accounts have no access to this panel.
-      if (!isDashboardRole(accountRole)) {
+      if (!accountRole) {
         setToast({
-          message: 'This account does not have dashboard access. Please sign in with an Admin or Manager account.',
+          message: 'This account does not have dashboard access. Please sign in with a Super Admin or Admin account.',
           type: 'error'
         });
         return;

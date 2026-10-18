@@ -1,6 +1,6 @@
 'use client';
 
-import { Droplets, Users, MonitorSmartphone, Tv, ExternalLink, X, ChevronRight } from 'lucide-react';
+import { Droplets, Users, MonitorSmartphone, Tv, MonitorPlay, ExternalLink, X, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect } from 'react';
@@ -12,6 +12,8 @@ import logo from "../../public/magic-track-logo.png";
 const menuItems = [
   { icon: Droplets, label: 'Car Wash Orders', href: '/orders' },
   { icon: Users, label: 'Customer Data', href: '/customer-data' },
+  // Videos / pictures the queue screen plays between queue views.
+  { icon: MonitorPlay, label: 'Screen Ads', href: '/screen-ads' },
   // Customer self-service screen — opens in its own tab (full screen, no sidebar).
   { icon: MonitorSmartphone, label: 'Customer Kiosk', href: '/kiosk', newTab: true },
   // Order status board for the TV in the waiting area.

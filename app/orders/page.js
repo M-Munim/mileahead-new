@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Search, Phone, X, Clock, Droplets, CheckCircle,
   RefreshCw, ClipboardList, Copy, Trash2, MessageCircle, Plus, CalendarPlus, CalendarDays,
-  Loader2, AlertCircle,
+  Loader2, AlertCircle, ShieldAlert,
 } from 'lucide-react';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
@@ -12,6 +12,7 @@ import Toast from '../components/Toast';
 import ConfirmationDialog from '../components/ConfirmationDialog';
 import NewOrderModal from '../components/NewOrderModal';
 import AppointmentModal from '../components/AppointmentModal';
+import DeleteRequestModal from '../components/DeleteRequestModal';
 import { useAuth } from '../contexts/AuthContext';
 import { copyText, getWhatsAppUrl } from '../../utils/location';
 import {
@@ -21,6 +22,7 @@ import {
 import {
   fetchCarWashOrders, createCarWashOrder, setOrderPaymentStatus, updateOrderField as saveOrderField,
   deleteOrder, fetchAppointments, createAppointment, cancelAppointment, setOrderStage, STAGES,
+  requestOrderDelete, rejectDeleteRequest,
 } from '../../utils/carWashApi';
 
 /** Orders refresh in the background so kiosk orders from any device show up. */
@@ -57,6 +59,7 @@ const TABS = [
   { key: 'unpaid', label: 'Unpaid' },
   { key: 'paid',   label: 'Paid' },
   { key: 'appointments', label: 'Appointments' },
+  { key: 'requests', label: 'Delete requests' }, // only shown while there are some
 ];
 
 const APPOINTMENT_PILL = {
@@ -83,6 +86,8 @@ const formatTime = (hhmm) => {
 };
 
 const byDateTime = (a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`);
+
+const requestWhen = (at) => String(at || '').replace('T', ' ').slice(0, 16);
 
 const getInitial = (name) => (name?.trim()?.[0] || '?').toUpperCase();
 const telHref = (phone) => `tel:${(phone || '').replace(/[^\d+]/g, '')}`;
@@ -131,7 +136,10 @@ function StatusPill({ status }) {
 // ─────────────────────────────────────────────────────────────
 // Order detail drawer
 // ─────────────────────────────────────────────────────────────
-function OrderDrawer({ order, onClose, onTogglePaid, onChangeStage, onCopyMessage, canDelete, onDelete, busy }) {
+function OrderDrawer({
+  order, onClose, onTogglePaid, onChangeStage, onCopyMessage, canDelete, onDelete,
+  canRequestDelete, canReview, onRequestDelete, onReject, busy,
+}) {
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', onKey);
@@ -306,13 +314,56 @@ function OrderDrawer({ order, onClose, onTogglePaid, onChangeStage, onCopyMessag
               : 'No cleaner assigned — WhatsApp will ask who to send it to.'}
           </p>
 
-          {canDelete && (
+          {order.deleteRequest && (
+            <div className="mt-5 p-3 bg-red-50 border border-red-200 text-[12px] text-red-800" role="status">
+              <div className="font-semibold flex items-center gap-1.5">
+                <ShieldAlert className="w-3.5 h-3.5" aria-hidden="true" />
+                Delete requested{order.deleteRequest.by ? ` by ${order.deleteRequest.by}` : ''}
+                {order.deleteRequest.at && <span className="font-normal text-red-700/80">· {requestWhen(order.deleteRequest.at)}</span>}
+              </div>
+              {order.deleteRequest.reason && <p className="mt-1">“{order.deleteRequest.reason}”</p>}
+              {canReview ? (
+                <div className="grid grid-cols-2 gap-2 mt-2.5">
+                  <button
+                    type="button"
+                    onClick={() => onDelete([order])}
+                    disabled={busy}
+                    className="py-2 text-[12px] font-semibold flex items-center justify-center gap-1.5 bg-red-600 text-white hover:bg-red-700 disabled:opacity-60"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" aria-hidden="true" /> Approve & delete
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onReject(order)}
+                    disabled={busy}
+                    className={`py-2 text-[12px] font-semibold transition-colors disabled:opacity-60 ${TONE.ghost}`}
+                  >
+                    Keep order
+                  </button>
+                </div>
+              ) : (
+                <p className="mt-1 text-red-700/80">Waiting for the Super Admin to approve.</p>
+              )}
+            </div>
+          )}
+
+          {canDelete && !order.deleteRequest && (
             <button
               type="button"
               onClick={() => onDelete([order])}
               className="w-full mt-5 py-2 text-[12px] font-semibold flex items-center justify-center gap-1.5 text-red-600 border border-red-200 hover:bg-red-50 transition-colors"
             >
               <Trash2 className="w-3.5 h-3.5" aria-hidden="true" /> Delete Order
+            </button>
+          )}
+
+          {!canDelete && canRequestDelete && !order.deleteRequest && (
+            <button
+              type="button"
+              onClick={() => onRequestDelete([order])}
+              className="w-full mt-5 py-2 text-[12px] font-semibold flex items-center justify-center gap-1.5 text-red-600 border border-red-200 hover:bg-red-50 transition-colors"
+            >
+              <ShieldAlert className="w-3.5 h-3.5" aria-hidden="true" /> Request Delete
             </button>
           )}
         </div>
@@ -374,8 +425,11 @@ export default function OrdersPage() {
   const [appointments, setAppointments] = useState([]);
   const [showAppointment, setShowAppointment] = useState(false);
   const [pendingCancel, setPendingCancel] = useState(null); // appointment awaiting confirmation
-  const { hasPermission } = useAuth();
+  const [pendingRequest, setPendingRequest] = useState(null); // orders an Admin asks to delete
+  const { hasPermission, user } = useAuth();
   const canDelete = hasPermission('canDeleteRecords');
+  const canRequestDelete = hasPermission('canRequestDelete');
+  const canReview = hasPermission('canReviewDeleteRequests');
   const canCreate = hasPermission('canManageBookings');
 
   const toggleSidebar = useCallback(() => setSidebarOpen((v) => !v), []);
@@ -445,13 +499,16 @@ export default function OrdersPage() {
     const c = { all: orders.length, appointments: appointments.length };
     for (const s of STATUSES) c[s] = 0;
     for (const o of orders) c[o.status] = (c[o.status] || 0) + 1;
+    c.requests = orders.filter((o) => o.deleteRequest).length;
     return c;
   }, [orders, appointments]);
 
   const visibleOrders = useMemo(() => {
     const q = query.trim().toLowerCase();
     return orders.filter((o) => {
-      if (activeTab !== 'all' && o.status !== activeTab) return false;
+      if (activeTab === 'requests') {
+        if (!o.deleteRequest) return false;
+      } else if (activeTab !== 'all' && o.status !== activeTab) return false;
       if (!q) return true;
       return [
         o.id, o.customer.name, o.customer.phone, serviceLabel(o), o.vehicle,
@@ -595,6 +652,44 @@ export default function OrdersPage() {
     }
   }, [pendingCancel]);
 
+  // Admin: delete request. Nothing is removed until a Super Admin approves.
+  const handleRequestDelete = useCallback(async (reason) => {
+    const list = pendingRequest || [];
+    const by = user?.username || user?.email || 'Admin';
+    const sent = new Map();
+    let lastError = null;
+    for (const order of list) {
+      try {
+        sent.set(order.id, await requestOrderDelete(order, reason, by));
+      } catch (error) {
+        console.error(`Error requesting delete for #${order.id}:`, error);
+        lastError = error;
+      }
+    }
+    if (sent.size === 0 && lastError) throw lastError; // the dialog shows why
+    setOrders((prev) => prev.map((o) => (sent.has(o.id) ? { ...o, deleteRequest: sent.get(o.id) } : o)));
+    setCheckedIds(new Set());
+    setPendingRequest(null);
+    setToast(lastError
+      ? { message: `${sent.size} of ${list.length} requests sent: ${lastError.message || 'server error'}`, type: 'error' }
+      : { message: `Delete request sent to the Super Admin for ${sent.size === 1 ? `#${list[0].id}` : `${sent.size} orders`}`, type: 'success' });
+  }, [pendingRequest, user]);
+
+  // Super Admin: keep the order (approving = the normal delete).
+  const rejectRequest = useCallback(async (order) => {
+    setBusy(order.id, true);
+    try {
+      await rejectDeleteRequest(order);
+      setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, deleteRequest: null } : o)));
+      setToast({ message: `#${order.id} kept — delete request rejected`, type: 'success' });
+    } catch (error) {
+      console.error(`Error rejecting delete request for #${order.id}:`, error);
+      setToast({ message: `Could not reject the request: ${error.message || 'server error'}`, type: 'error' });
+    } finally {
+      setBusy(order.id, false);
+    }
+  }, [setBusy]);
+
   // Wash stage: shown at once (and on the queue screen after its next refresh), undone if the save fails.
   const changeStage = useCallback(async (order, stage) => {
     if (busyIds.has(order.id) || order.stage === stage) return;
@@ -698,7 +793,7 @@ export default function OrdersPage() {
 
               {/* Tabs */}
               <div className="flex gap-2 px-5 pt-4 pb-1 overflow-x-auto">
-                {TABS.map((tab) => {
+                {TABS.filter((tab) => tab.key !== 'requests' || counts.requests > 0 || activeTab === 'requests').map((tab) => {
                   const active = activeTab === tab.key;
                   return (
                     <button
@@ -716,6 +811,16 @@ export default function OrdersPage() {
                   );
                 })}
               </div>
+
+              {canReview && counts.requests > 0 && activeTab !== 'requests' && (
+                <div className="mx-5 mt-3 px-3 py-2 flex flex-wrap items-center gap-2 text-sm bg-red-50 border border-red-200 text-red-800" role="status">
+                  <ShieldAlert className="w-4 h-4 shrink-0" aria-hidden="true" />
+                  <span className="mr-auto">
+                    <b>{counts.requests}</b> delete request{counts.requests === 1 ? '' : 's'} from Admins waiting for you
+                  </span>
+                  <button onClick={() => setActiveTab('requests')} className="text-xs font-semibold underline">Review</button>
+                </div>
+              )}
 
               {/* Bulk actions */}
               {!isAppointmentsTab && checkedOrders.length > 0 && (
@@ -739,6 +844,15 @@ export default function OrdersPage() {
                       className="text-xs font-medium px-3 py-1.5 flex items-center gap-1.5 text-red-600 bg-white border border-red-200 hover:bg-red-50"
                     >
                       <Trash2 className="w-3.5 h-3.5" aria-hidden="true" /> Delete
+                    </button>
+                  )}
+                  {!canDelete && canRequestDelete && (
+                    <button
+                      onClick={() => setPendingRequest(checkedOrders.filter((o) => !o.deleteRequest))}
+                      disabled={checkedOrders.every((o) => o.deleteRequest)}
+                      className="text-xs font-medium px-3 py-1.5 flex items-center gap-1.5 text-red-600 bg-white border border-red-200 hover:bg-red-50 disabled:opacity-50"
+                    >
+                      <ShieldAlert className="w-3.5 h-3.5" aria-hidden="true" /> Request Delete
                     </button>
                   )}
                   <button
@@ -872,6 +986,19 @@ export default function OrdersPage() {
                                 Kiosk · {o.queue}
                               </span>
                             )}
+                            {o.deleteRequest && (
+                              <span
+                                className="block mt-1 w-fit px-2 py-0.5 rounded-full text-[10px] font-semibold bg-red-100 text-red-700"
+                                title={[o.deleteRequest.by, o.deleteRequest.reason].filter(Boolean).join(': ')}
+                              >
+                                Delete requested
+                              </span>
+                            )}
+                            {activeTab === 'requests' && o.deleteRequest?.reason && (
+                              <span className="block mt-1 max-w-[220px] whitespace-normal text-[11px] font-normal text-gray-500">
+                                “{o.deleteRequest.reason}”{o.deleteRequest.by ? ` — ${o.deleteRequest.by}` : ''}
+                              </span>
+                            )}
                           </td>
                           <td className="px-3.5 py-3">
                             <div className="text-sm font-medium text-gray-900 whitespace-nowrap">{o.customer.name}</div>
@@ -931,7 +1058,28 @@ export default function OrdersPage() {
                           <td className="px-3.5 py-3 text-sm text-gray-700 whitespace-nowrap">{o.time}</td>
                           <td className="px-3.5 py-3"><StatusPill status={o.status} /></td>
                           <td className="px-3.5 py-3 text-right whitespace-nowrap">
-                            {o.status === 'unpaid' ? (
+                            {activeTab === 'requests' && o.deleteRequest ? (
+                              canReview ? (
+                                <span className="inline-flex gap-1.5">
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); setPendingDelete([o]); }}
+                                    disabled={busyIds.has(o.id)}
+                                    className="text-xs font-medium px-3 py-1.5 bg-red-600 text-white hover:bg-red-700 disabled:opacity-60"
+                                  >
+                                    Approve
+                                  </button>
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); rejectRequest(o); }}
+                                    disabled={busyIds.has(o.id)}
+                                    className={`text-xs font-medium px-3 py-1.5 transition-colors disabled:opacity-60 ${TONE.ghost}`}
+                                  >
+                                    Keep
+                                  </button>
+                                </span>
+                              ) : (
+                                <span className="text-xs text-gray-500">Waiting for Super Admin</span>
+                              )
+                            ) : o.status === 'unpaid' ? (
                               <button
                                 onClick={(e) => { e.stopPropagation(); togglePaid(o); }}
                                 disabled={busyIds.has(o.id)}
@@ -975,7 +1123,7 @@ export default function OrdersPage() {
                   <Clock className="w-3.5 h-3.5" aria-hidden="true" />
                   {isAppointmentsTab
                     ? 'Future appointments, soonest first · use Take Appointment to book one'
-                    : `Tap a row to open the order · move each car Waiting → Washing → Ready → Collected (customers see it on the queue screen) · Mark Paid when the customer pays${canDelete ? ' · tick orders to send or delete them' : ''}`}
+                    : `Tap a row to open the order · move each car Waiting → Washing → Ready → Collected (customers see it on the queue screen) · Mark Paid when the customer pays${canDelete ? ' · tick orders to send or delete them' : canRequestDelete ? ' · tick orders to send them or request a delete' : ''}`}
                 </div>
               </div>
             </div>
@@ -992,8 +1140,16 @@ export default function OrdersPage() {
           onCopyMessage={handleCopyMessage}
           canDelete={canDelete}
           onDelete={setPendingDelete}
+          canRequestDelete={canRequestDelete}
+          canReview={canReview}
+          onRequestDelete={setPendingRequest}
+          onReject={rejectRequest}
           busy={busyIds.has(selectedOrder.id)}
         />
+      )}
+
+      {pendingRequest?.length > 0 && (
+        <DeleteRequestModal orders={pendingRequest} onClose={() => setPendingRequest(null)} onSubmit={handleRequestDelete} />
       )}
 
       {showNewOrder && (

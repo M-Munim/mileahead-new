@@ -18,7 +18,7 @@ export default function SignupPage() {
     username: '',
     email: '',
     password: '',
-    role_name: ROLES.MANAGER,
+    role_name: ROLES.ADMIN,
     firstname: '',
     lastname: '',
     phone: ''
@@ -50,7 +50,7 @@ export default function SignupPage() {
     } else if (!PHONE_REGEX.test(formData.phone)) {
       newErrors.phone = 'Please enter a valid phone number';
     }
-    if (formData.role_name !== ROLES.MANAGER) {
+    if (formData.role_name !== ROLES.ADMIN) {
       newErrors.role_name = 'Only Manager accounts can be created here';
     }
     if (!formData.password) {
@@ -73,7 +73,7 @@ export default function SignupPage() {
         username: formData.username.trim(),
         email: formData.email.trim(),
         password: formData.password,
-        role_name: ROLES.MANAGER,
+        role_name: ROLES.ADMIN,
         firstname: formData.firstname.trim(),
         lastname: formData.lastname.trim(),
         phone: formData.phone.trim()
@@ -167,7 +167,7 @@ export default function SignupPage() {
               <div className="relative">
                 <Shield className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" aria-hidden="true" />
                 <div className="w-full pl-10 pr-4 py-2.5 border border-gray-300 bg-gray-50 text-gray-900 text-sm">
-                  {ROLE_NAMES[ROLES.MANAGER]}
+                  {ROLE_NAMES[ROLES.ADMIN]}
                 </div>
               </div>
               <p className="mt-1.5 text-xs text-gray-500">

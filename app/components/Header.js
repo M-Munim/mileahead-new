@@ -10,18 +10,18 @@ export default function Header({ title, toggleSidebar }) {
   const router = useRouter();
 
   const roleIcons = {
-    [ROLES.ADMIN]: Shield,
-    [ROLES.MANAGER]: UserCog,
+    [ROLES.SUPER_ADMIN]: Shield,
+    [ROLES.ADMIN]: UserCog,
   };
 
   const roleColors = {
-    [ROLES.ADMIN]: 'bg-[var(--primary)]',
-    [ROLES.MANAGER]: 'bg-neutral-600',
+    [ROLES.SUPER_ADMIN]: 'bg-[var(--primary)]',
+    [ROLES.ADMIN]: 'bg-neutral-600',
   };
 
   const roleBadgeColors = {
-    [ROLES.ADMIN]: 'bg-orange-100 text-orange-800',
-    [ROLES.MANAGER]: 'bg-gray-100 text-gray-800',
+    [ROLES.SUPER_ADMIN]: 'bg-orange-100 text-orange-800',
+    [ROLES.ADMIN]: 'bg-gray-100 text-gray-800',
   };
 
   const RoleIcon = role ? roleIcons[role] : Shield;

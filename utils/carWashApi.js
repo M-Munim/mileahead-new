@@ -121,6 +121,9 @@ export function mapBookingToOrder(b) {
     total: num(b.price),
     cleaner: null,
     notes: b.special_instructions || '',
+    deleteRequest: Number(b.delete_requested) === 1
+      ? { reason: b.delete_reason || '', by: b.delete_requested_by || '', at: b.delete_requested_at || '' }
+      : null,
   };
 }
 
@@ -284,6 +287,38 @@ export const updateOrderField = (order, field, value) => {
 };
 
 export const deleteOrder = (order) => bookingService.deleteBooking(order.originalId);
+
+// ── Delete requests (Admins can't delete; the Super Admin approves) ──
+// Columns delete_requested, delete_reason, delete_requested_by, delete_requested_at
+// are requested from the backend developer (BACKEND_REQUESTS.md, section 9).
+const nowSql = () => {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+};
+
+async function saveDeleteFields(order, fields) {
+  try {
+    return await bookingService.updateBooking(order.originalId, toFormData(fields), MULTIPART);
+  } catch (error) {
+    if (isRejectedField(error)) throw new Error('Delete requests need a server update from the backend developer first.');
+    throw error;
+  }
+}
+
+/** Admin: ask the Super Admin to delete this order. Nothing is removed. */
+export function requestOrderDelete(order, reason, requestedBy) {
+  const at = nowSql();
+  return saveDeleteFields(order, {
+    delete_requested: 1,
+    delete_reason: reason,
+    delete_requested_by: requestedBy,
+    delete_requested_at: at,
+  }).then(() => ({ reason, by: requestedBy, at }));
+}
+
+/** Super Admin: keep the order. (Approving = deleteOrder.) */
+export const rejectDeleteRequest = (order) => saveDeleteFields(order, { delete_requested: 0 });
 
 // ─────────────────────────────────────────────────────────────
 // Appointments (bookings with Service = 'appointment')

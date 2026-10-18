@@ -4,43 +4,45 @@ import { createContext, useContext, useState, useEffect, useCallback } from 'rea
 
 const AuthContext = createContext();
 
-// Available roles in the system.
-// These are the SINGLE SOURCE OF TRUTH for roles across login AND signup.
-// The values MUST match what the backend accepts (see GET /api/v1/role-details).
+// Dashboard roles (client request, 18 Oct 2026):
+//   Super Admin — sees and changes everything, deletes, and approves Admins' delete requests.
+//   Admin       — enters and updates orders (paid, stage, payment), Customer Data and
+//                 Screen Ads, but cannot delete: they send a delete request instead.
 export const ROLES = {
+  SUPER_ADMIN: 'super_admin',
   ADMIN: 'admin',
-  MANAGER: 'manager',
 };
 
 // Role display names
 export const ROLE_NAMES = {
+  [ROLES.SUPER_ADMIN]: 'Super Admin',
   [ROLES.ADMIN]: 'Admin',
-  [ROLES.MANAGER]: 'Manager',
 };
 
 // Role permissions.
-// Flip any of these to change what a Manager can do.
 export const ROLE_PERMISSIONS = {
-  [ROLES.ADMIN]: {
+  [ROLES.SUPER_ADMIN]: {
     canAccessDashboard: true,
     canManageUsers: true,
     canManageBookings: true,
     canManageFinance: true,
     canManagePricing: true,
     canDeleteRecords: true,
+    canReviewDeleteRequests: true,
+    canRequestDelete: false, // deletes directly
     canManageFleet: true,
     canAccessReports: true,
     canManageSettings: true,
   },
-  [ROLES.MANAGER]: {
+  [ROLES.ADMIN]: {
     canAccessDashboard: true,
-    canManageUsers: true,
+    canManageUsers: false,
     canManageBookings: true,
     canManageFinance: true,
-    // Client request: only Admin changes prices for now. Managers still see them.
     canManagePricing: false,
-    // Deleting records (data cleanup) is Admin only.
     canDeleteRecords: false,
+    canReviewDeleteRequests: false,
+    canRequestDelete: true,
     canManageFleet: true,
     canAccessReports: true,
     canManageSettings: true,
@@ -48,12 +50,32 @@ export const ROLE_PERMISSIONS = {
 };
 
 /**
- * Roles allowed into this dashboard. Driver accounts (chauffeurs / pddriver)
- * still exist in the backend but have no business in the admin panel.
+ * Until the backend has a super_admin role, its existing 'admin' account (the
+ * owner's) is the Super Admin and 'manager' accounts are Admins. Set this to
+ * true once the backend uses super_admin / admin, so 'admin' means Admin.
  */
+export const BACKEND_HAS_SUPER_ADMIN_ROLE = false;
+
+/**
+ * Dashboard role for the role name the server returns, or null for accounts
+ * with no access (drivers). Normalised: the backend saved the manager role as
+ * "Manager " (capital, trailing space).
+ */
+export function roleFromServer(serverRole) {
+  const r = String(serverRole || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+  if (r === 'super_admin' || r === 'superadmin') return ROLES.SUPER_ADMIN;
+  if (r === 'admin') return BACKEND_HAS_SUPER_ADMIN_ROLE ? ROLES.ADMIN : ROLES.SUPER_ADMIN;
+  if (r === 'manager') return ROLES.ADMIN;
+  return null;
+}
+
+/** Roles allowed into this dashboard. */
 export function isDashboardRole(value) {
   return Object.values(ROLES).includes(value);
 }
+
+// Sessions saved before the Super Admin / Admin change hold old role names; they log in again.
+const ROLE_VERSION = '2';
 
 /**
  * Check if a JWT token is expired by decoding the payload.
@@ -107,20 +129,18 @@ export function AuthProvider({ children }) {
     const token = safeGetItem('token');
     const userData = safeGetJSON('user');
     const userRole = safeGetItem('userRole');
+    const current = safeGetItem('roleVersion') === ROLE_VERSION && isDashboardRole(userRole);
 
-    if (token && !isTokenExpired(token)) {
+    if (token && !isTokenExpired(token) && current) {
       setIsLoggedIn(true);
       if (userData) setUser(userData);
-      // Ignore roles saved before the Chauffeur/PD Driver -> Admin/Manager
-      // rename; fall back to Admin so old sessions aren't locked out.
-      const validRole = isDashboardRole(userRole) ? userRole : ROLES.ADMIN;
-      setRole(validRole);
-      localStorage.setItem('userRole', validRole);
+      setRole(userRole);
     } else if (token) {
-      // Token exists but is expired — clear it
+      // Expired, or saved with the old role names — clear it so they log in again.
       localStorage.removeItem('token');
       localStorage.removeItem('user');
       localStorage.removeItem('userRole');
+      localStorage.removeItem('roleVersion');
     }
     setLoading(false);
   }, []);
@@ -132,6 +152,7 @@ export function AuthProvider({ children }) {
       setUser(userData);
     }
     localStorage.setItem('userRole', userRole);
+    localStorage.setItem('roleVersion', ROLE_VERSION);
     setRole(userRole);
     setIsLoggedIn(true);
   }, []);

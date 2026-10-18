@@ -11,7 +11,7 @@ import Skeleton from './Skeleton';
  * Protects routes/components based on user roles
  * 
  * Usage:
- * <RoleGuard allowedRoles={['admin', 'manager']}>
+ * <RoleGuard allowedRoles={['super_admin', 'admin']}>
  *   <YourProtectedComponent />
  * </RoleGuard>
  */
@@ -140,15 +140,15 @@ export function PermissionGuard({ children, permission, fallback = null }) {
  */
 export function RoleBadge({ roleKey }) {
   const roleConfig = {
-    [ROLES.ADMIN]: {
+    [ROLES.SUPER_ADMIN]: {
       icon: Shield,
       color: 'bg-purple-500',
-      name: ROLE_NAMES[ROLES.ADMIN]
+      name: ROLE_NAMES[ROLES.SUPER_ADMIN]
     },
-    [ROLES.MANAGER]: {
+    [ROLES.ADMIN]: {
       icon: UserCog,
       color: 'bg-blue-500',
-      name: ROLE_NAMES[ROLES.MANAGER]
+      name: ROLE_NAMES[ROLES.ADMIN]
     }
   };
 
