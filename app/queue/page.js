@@ -335,7 +335,17 @@ export default function QueuePage() {
                     key={car.id}
                     className={`flex flex-col items-center justify-center text-center ${big ? 'py-[2.4vmin]' : 'py-[1.6vmin]'} ${style.card} ${newReady[car.id] ? 'animate-pulse ring-[0.5vmin] ring-white' : ''}`}
                   >
-                    <span className={`${big ? 'text-[7.5vmin]' : 'text-[5vmin]'} font-black leading-none tabular-nums`} dir="ltr">{car.queue}</span>
+                    {/* One token per kind of work (W172 · T172 …); several shrink to fit the card. */}
+                    <span
+                      className={`flex flex-col gap-[0.6vmin] font-black leading-none tabular-nums ${
+                        (car.tokens?.length || 1) > 1
+                          ? big ? 'text-[5vmin]' : 'text-[3.6vmin]'
+                          : big ? 'text-[7.5vmin]' : 'text-[5vmin]'
+                      }`}
+                      dir="ltr"
+                    >
+                      {(car.tokens?.length ? car.tokens : [car.queue]).map((token) => <span key={token}>{token}</span>)}
+                    </span>
                     {plateTail(car.numberPlate) && (
                       <span className={`mt-[0.8vmin] text-[2.2vmin] font-semibold tabular-nums ${style.plate}`} dir="ltr">{plateTail(car.numberPlate)}</span>
                     )}

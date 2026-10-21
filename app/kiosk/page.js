@@ -5,11 +5,13 @@ import NextImage from 'next/image';
 import {
   Droplets, Sparkles, Gem, Armchair, WandSparkles, Sun, ShieldCheck, Shield, Tag, Award, Building2,
   Car, CarFront, Bus, Truck, Banknote, CreditCard, Zap, Clock, Handshake, Check,
-  Languages, ArrowLeft, ArrowRight, CircleCheck, Ticket, AlertCircle, Loader2, Hand,
+  Languages, ArrowLeft, ArrowRight, CircleCheck, Ticket, AlertCircle, Loader2, Hand, MessageCircle,
 } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import logo from '../../public/magic-track-logo.png';
+import { getWhatsAppUrl } from '../../utils/location';
 import {
-  SERVICE_GROUPS, EXTRAS, PAYMENT_METHODS, PAYMENT_TYPES, DISCOUNTS, COUPON_RATE,
+  SERVICE_GROUPS, EXTRAS, PAYMENT_METHODS, PAYMENT_TYPES, DISCOUNTS, COUPON_RATE, TOKEN_NAMES,
   vehiclesForServices, servicesPrice, servicePrice, priceFor, applyDiscount, couponApplies,
 } from '../../utils/priceList';
 import { createCarWashOrder, ORDER_SOURCE } from '../../utils/carWashApi';
@@ -57,7 +59,7 @@ const SLOTS = [
 ];
 
 const STEPS = ['1. Service', '2. Car Type', '3. Other Services', '4. Details & Payment'];
-const DONE_RESET_SECONDS = 30;
+const DONE_RESET_SECONDS = 45; // time to scan the WhatsApp code
 const IDLE_SECONDS = 60;      // no touch for this long → "Are you still there?"
 const IDLE_WARN_SECONDS = 15; // …then back to the welcome screen
 
@@ -69,6 +71,9 @@ const AR = {
   'Are you still there?': 'هل ما زلت هنا؟', 'Tap anywhere to continue your order.': 'المس الشاشة لمتابعة طلبك.',
   'Starting over in': 'سيبدأ من جديد بعد', "I'm still here": 'نعم، أنا هنا',
   'Watch the queue screen for your number.': 'تابع رقمك على شاشة الانتظار.',
+  'Share on WhatsApp': 'شارك عبر واتساب',
+  'Scan with your phone camera to get your order on WhatsApp.': 'امسح الرمز بكاميرا هاتفك لتحصل على طلبك عبر واتساب.',
+  'Order': 'طلب', 'Plate': 'اللوحة',
   '1. Service': '1. الخدمة', '2. Car Type': '2. نوع السيارة', '3. Other Services': '3. خدمات أخرى', '4. Details & Payment': '4. البيانات والدفع',
   'Choose your service': 'اختر الخدمة', 'Tap the service you want today.': 'اختر الخدمة التي تريدها اليوم.',
   'Car Wash, Polishing & Protection': 'غسيل وتلميع وحماية السيارة', 'Paint Protection Film (PPF)': 'فيلم حماية الطلاء (PPF)',
@@ -91,7 +96,9 @@ const AR = {
   'Your order': 'طلبك', 'Nothing selected yet.': 'لم تختر شيئاً بعد.', 'Subtotal': 'المجموع الفرعي', 'Coupon': 'القسيمة', 'Total': 'المجموع',
   'Includes a starting price — final price confirmed at the counter.': 'يشمل سعراً مبدئياً — يتم تأكيد السعر النهائي عند الكاشير.',
   'Back': 'رجوع', 'Next': 'التالي', 'Place order': 'تأكيد الطلب',
-  'Order placed': 'تم تأكيد الطلب', 'Your queue number': 'رقم دورك', 'Please pay at the counter.': 'يرجى الدفع عند الكاشير.',
+  'Order placed': 'تم تأكيد الطلب', 'Your queue number': 'رقم دورك', 'Your token numbers': 'أرقام طلبك',
+  'One number for each team. Watch the queue screen for each one.': 'رقم لكل فريق. تابع كل رقم على شاشة الانتظار.',
+  Washing: 'غسيل', Polishing: 'تلميع', Tinting: 'تظليل', Coating: 'طلاء', PPF: 'فيلم الحماية', 'Other Services': 'خدمات أخرى', 'Please pay at the counter.': 'يرجى الدفع عند الكاشير.',
   'Drive to the wash bay when your number is called.': 'توجّه إلى مسار الغسيل عند نداء رقمك.',
   'Starting now': 'نبدأ الآن', 'In': 'بعد', 'Start new order': 'طلب جديد', 'This screen resets in': 'تعود الشاشة للبداية بعد', 'seconds': 'ثانية',
   'Could not save your order. Please ask our staff for help.': 'تعذر حفظ طلبك. يرجى طلب المساعدة من الموظفين.',
@@ -270,7 +277,10 @@ export default function KioskPage() {
         notes: [slot.minutes ? `Customer wants to start in ${slot.key}` : '', s.notes.trim()].filter(Boolean).join(' · '),
       }, ORDER_SOURCE.KIOSK);
       setSecondsLeft(DONE_RESET_SECONDS);
-      setDone({ queue: created?.queue || '—', slot: slot.key, services: s.services, vehicle: s.vehicle, total });
+      setDone({
+        queue: created?.queue || '—', tokens: created?.tokens || [], slot: slot.key, services: s.services, extras: s.extras,
+        vehicle: s.vehicle, plate: s.plate.trim(), total,
+      });
     } catch (error) {
       console.error('Kiosk order error:', error);
       // 401/403: the server needs a login to save orders. Staff log this screen in once.
@@ -335,6 +345,21 @@ export default function KioskPage() {
       root.style.overscrollBehavior = previousOverscroll;
     };
   }, []);
+
+  // WhatsApp message with the order, in the language the customer used.
+  const whatsAppLink = (order) => {
+    const lines = [
+      `*Magic Track — ${t('Order')} ${order.queue}*`,
+      `${order.services.length ? order.services.map(t).join(' + ') : t('Other services only')} · ${t(order.vehicle)}`,
+      order.extras?.length ? `${t('3. Other Services').replace(/^\d+\.\s*/, '')}: ${order.extras.map(t).join(', ')}` : null,
+      order.plate ? `${t('Plate')}: ${order.plate}` : null,
+      order.slot === 'Now' ? t('Starting now') : `${t('In')} ${t(order.slot)}`,
+      `${t('Total')}: ${qar(order.total)}`,
+      '',
+      `${t('Please pay at the counter.')} ${t('Watch the queue screen for your number.')}`,
+    ];
+    return getWhatsAppUrl(lines.filter((l) => l !== null).join('\n'));
+  };
 
   // ── Order summary lines ────────────────────────────────────
   const lines = [];
@@ -604,8 +629,25 @@ export default function KioskPage() {
           <div className="bg-white border border-gray-200 shadow-sm max-w-xl w-full text-center px-8 py-12 animate-fade-in-scale">
             <CircleCheck className="w-16 h-16 text-green-600 mx-auto" aria-hidden="true" />
             <h2 className="text-4xl font-bold text-gray-900 mt-4">{t('Order placed')}</h2>
-            <p className="text-lg text-gray-500 mt-6">{t('Your queue number')}</p>
-            <div className="text-8xl font-black text-[var(--primary)] leading-none mt-2" dir="ltr">{done.queue}</div>
+            {done.tokens.length > 1 ? (
+              <>
+                <p className="text-lg text-gray-500 mt-6">{t('Your token numbers')}</p>
+                <div className="flex flex-wrap justify-center gap-3 mt-3" dir="ltr">
+                  {done.tokens.map((token) => (
+                    <div key={token} className="min-w-[130px] px-4 py-3 border-2 border-[var(--primary)] bg-[var(--primary-light)]">
+                      <div className="text-5xl font-black text-[var(--primary)] leading-none tabular-nums">{token}</div>
+                      <div className="text-sm font-semibold text-gray-700 mt-1.5" dir={ar ? 'rtl' : 'ltr'}>{t(TOKEN_NAMES[token[0]] || '')}</div>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-sm text-gray-500 mt-3">{t('One number for each team. Watch the queue screen for each one.')}</p>
+              </>
+            ) : (
+              <>
+                <p className="text-lg text-gray-500 mt-6">{t('Your queue number')}</p>
+                <div className="text-8xl font-black text-[var(--primary)] leading-none mt-2" dir="ltr">{done.queue}</div>
+              </>
+            )}
             <p className="text-lg text-gray-700 mt-6">
               {done.services.length ? done.services.map(t).join(' + ') : t('Other services only')} · {t(done.vehicle)} ·{' '}
               {done.slot === 'Now' ? t('Starting now') : `${t('In')} ${t(done.slot)}`}
@@ -614,6 +656,20 @@ export default function KioskPage() {
             <p className="text-base text-gray-500 mt-4">
               {t('Please pay at the counter.')} {t('Watch the queue screen for your number.')}
             </p>
+
+            {/* WhatsApp share: a code for the customer's own phone, so nothing opens on the kiosk */}
+            <div className="mt-6 flex items-center gap-5 text-start border-2 border-green-600/30 bg-green-50 p-4">
+              <div className="shrink-0 bg-white p-2 border border-gray-200">
+                <QRCodeSVG value={whatsAppLink(done)} size={132} level="M" />
+              </div>
+              <div>
+                <p className="text-xl font-extrabold text-gray-900 flex items-center gap-2">
+                  <MessageCircle className="w-6 h-6 text-green-600" aria-hidden="true" /> {t('Share on WhatsApp')}
+                </p>
+                <p className="text-base text-gray-600 mt-1">{t('Scan with your phone camera to get your order on WhatsApp.')}</p>
+              </div>
+            </div>
+
             <button
               type="button"
               onClick={resetKiosk}

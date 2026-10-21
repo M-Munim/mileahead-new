@@ -38,8 +38,9 @@
 // order is saved again without them rather than lost (see createCarWashOrder).
 
 import { bookingService } from './axiosInstance';
+import { BASE_URL } from './apiPaths';
 import { extractArray } from './extractArray';
-import { servicesPrice, findExtra, joinServices, splitServices } from './priceList';
+import { servicesPrice, findExtra, joinServices, splitServices, tokensFor } from './priceList';
 
 
 export const CAR_WASH_SERVICE = 'car wash';
@@ -83,8 +84,42 @@ function formatCreated(iso) {
   return `${when.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} · ${when.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
 }
 
-/** Queue number shown to the customer and on the queue screen, from the booking number. */
-export const queueNumberFor = (booking) => `A${booking.booking_number || booking.id}`;
+/**
+ * Token numbers shown to the customer and on the queue screen: one per kind of
+ * work, from the booking number (W172 · T172 · P172). See tokensFor in priceList.
+ */
+const bookingNumber = (booking) => booking.booking_number || booking.id;
+
+/**
+ * The backend's package and add_ons columns hold only 50 characters (checked
+ * 21 Oct 2026), so a long list doesn't fit. The full service list goes in
+ * sub_Service (the backend stores it as a list, no such limit); package and
+ * add_ons get a label that fits, and a shortened add_ons list is also written
+ * out in full in the notes.
+ */
+const SHORT_COLUMN = 50;
+const EXTRAS_NOTE = 'Other services: ';
+const extrasFromNotes = (notes) => {
+  const part = String(notes || '').split(' · ').find((p) => p.startsWith(EXTRAS_NOTE));
+  return part ? splitList(part.slice(EXTRAS_NOTE.length)) : null;
+};
+function fitLabel(list) {
+  const full = list.join(', ');
+  if (full.length <= SHORT_COLUMN) return full;
+  const label = `${list[0]} +${list.length - 1} more`;
+  return label.length <= SHORT_COLUMN ? label : `${list.length} items`;
+}
+const isShortLabel = (text) => / \+\d+ more$|^\d+ items$/.test(text);
+
+/** Main services of a booking: the list in sub_Service, else package. */
+function bookingServices(b) {
+  let list = b.sub_Service;
+  if (typeof list === 'string' && list.trim().startsWith('[')) {
+    try { list = JSON.parse(list); } catch { /* plain text */ }
+  }
+  if (Array.isArray(list)) return list.map((x) => String(x).trim()).filter(Boolean);
+  return splitServices(list || b.package);
+}
 
 /** Backend booking → dashboard order. */
 export function mapBookingToOrder(b) {
@@ -95,16 +130,23 @@ export function mapBookingToOrder(b) {
   const subtotal = b.subtotal != null
     ? num(b.subtotal)
     : num(b.package_price) + num(b.add_ons_price) + num(b.vehicle_price);
+  const services = bookingServices(b);
+  // A shortened add_ons label ("Seat Cover +3 more") → the full list from the notes.
+  const extras = isShortLabel(b.add_ons || '')
+    ? extrasFromNotes(b.special_instructions) || splitList(b.add_ons)
+    : splitList(b.add_ons);
+  const tokens = tokensFor(bookingNumber(b), services, extras);
   return {
     id: String(b.booking_number || b.id),
     originalId: b.id,
     source: isKiosk ? 'kiosk' : 'dashboard',
-    queue: queueNumberFor(b),
+    tokens,
+    queue: tokens.join(' · '), // for text: toasts, messages, search
     customer: { name: b.passenger_name || 'Walk-in customer', phone: b.contact_number || '' },
-    services: splitServices(b.package || b.sub_Service),
-    service: joinServices(splitServices(b.package || b.sub_Service)), // for display and search
+    services,
+    service: joinServices(services), // for display and search
     vehicle: b.car_name || '',
-    extras: splitList(b.add_ons),
+    extras,
     numberPlate: b.car_number || '',
     discount: b.discount || '',
     couponSerial: b.coupon_serial || '',
@@ -191,6 +233,10 @@ export async function createCarWashOrder(values, source = ORDER_SOURCE.DASHBOARD
   // values.services = list of main services (older callers pass one values.service).
   const services = values.services ?? (values.service ? [values.service] : []);
   const mainService = joinServices(services) || undefined;
+  const extras = values.extras || [];
+  const extrasLabel = fitLabel(extras);
+  const notes = [values.notes, extrasLabel !== extras.join(', ') ? `${EXTRAS_NOTE}${extras.join(', ')}` : '']
+    .filter(Boolean).join(' · ');
   const mainPrice = services.length ? servicesPrice(services, values.vehicle) : undefined;
   const status = values.paymentStatus === 'paid' ? 'paid' : 'unpaid';
   const fields = {
@@ -199,12 +245,12 @@ export async function createCarWashOrder(values, source = ORDER_SOURCE.DASHBOARD
     service_type: source,
     passenger_name: values.customerName,
     contact_number: values.phone,
-    package: mainService,
+    package: services.length ? fitLabel(services) : undefined,
     sub_Service: mainService,
     package_price: mainPrice,
     car_name: values.vehicle,
     car_number: values.numberPlate,
-    add_ons: (values.extras || []).join(', '),
+    add_ons: extrasLabel,
     add_ons_price: values.extras?.length ? extrasTotal : undefined,
     date: values.date,
     time: values.time,
@@ -212,7 +258,7 @@ export async function createCarWashOrder(values, source = ORDER_SOURCE.DASHBOARD
     price: values.total,
     payment_method: values.paymentMethod,
     payment_channel: values.paymentType,
-    special_instructions: values.notes,
+    special_instructions: notes,
   };
   const newFields = {
     payment_type: values.paymentType,
@@ -238,7 +284,11 @@ export async function createCarWashOrder(values, source = ORDER_SOURCE.DASHBOARD
     res = await createBooking({ ...fields, status });
   }
   const booking = bookingFromResponse(res);
-  return booking ? mapBookingToOrder(booking) : null;
+  if (!booking) return null;
+  // Tokens from what was ordered, in case the reply leaves the services out.
+  const order = mapBookingToOrder(booking);
+  const tokens = tokensFor(order.id, services, extras);
+  return { ...order, tokens, queue: tokens.join(' · ') };
 }
 
 async function createBooking(fields) {
@@ -269,9 +319,46 @@ export async function setOrderStage(order, stage) {
 export async function fetchQueue() {
   const d = new Date();
   const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  return (await fetchCarWashOrders())
+  const fromAllBookings = async () => (await fetchCarWashOrders())
     .filter((o) => o.stage !== 'collected' && o.date === today)
     .sort((a, b) => a.originalId - b.originalId);
+
+  // Logged in: the full list has the services, so the screen shows W / T / P tokens.
+  const loggedIn = typeof window !== 'undefined' && !!window.localStorage?.getItem('token');
+  if (loggedIn) {
+    try {
+      return await fromAllBookings();
+    } catch (error) {
+      console.warn('all bookings failed, using the public queue instead:', error?.message);
+    }
+  }
+
+  // Public route (no login needed on the display): booking_number, status and
+  // the last 3 digits of car_number only, so tokens are shown as plain numbers.
+  try {
+    // Plain fetch, no token: an old or expired token on the display must not block a public route.
+    const res = await fetch(`${BASE_URL}/api/v1/booking/queue-today`, { cache: 'no-store' });
+    const body = res.ok ? await res.json() : null;
+    if (body?.success && Array.isArray(body.data)) {
+      return body.data
+        .map((b) => {
+          const status = String(b.status || '').toLowerCase();
+          return {
+            id: String(b.booking_number),
+            originalId: Number(b.booking_number) || 0,
+            tokens: [String(b.booking_number)],
+            queue: String(b.booking_number),
+            stage: STAGES.includes(status) ? status : 'collected',
+            numberPlate: b.car_number || '',
+          };
+        })
+        .filter((o) => o.stage !== 'collected')
+        .sort((a, b) => a.originalId - b.originalId);
+    }
+  } catch (error) {
+    console.warn('queue-today failed, reading all bookings instead:', error?.message);
+  }
+  return fromAllBookings();
 }
 
 /** Payment method (Cash / Card) or payment type (Fawran…) changed from the table. */

@@ -54,7 +54,7 @@ export const ROLE_PERMISSIONS = {
  * owner's) is the Super Admin and 'manager' accounts are Admins. Set this to
  * true once the backend uses super_admin / admin, so 'admin' means Admin.
  */
-export const BACKEND_HAS_SUPER_ADMIN_ROLE = false;
+export const BACKEND_HAS_SUPER_ADMIN_ROLE = true; // super_admin role live since 21 Oct 2026
 
 /**
  * Dashboard role for the role name the server returns, or null for accounts

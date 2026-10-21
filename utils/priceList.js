@@ -116,4 +116,34 @@ export function priceFor(services, vehicle, extras = []) {
   return extras.reduce((sum, name) => sum + (findExtra(name)?.price ?? 0), base);
 }
 
-export const formatQar = (amount) => `QAR ${Number(amount || 0).toLocaleString('en-US')}`;
+// ── Token numbers (client request, 21 Oct 2026) ──
+// One order gets one token per kind of work, so each team calls its own job:
+// order 172 with a wash, a tint and a polish → W172 · T172 · P172.
+export const TOKEN_LETTERS = {
+  'Body Wash – In & Out': 'W',
+  'Full Interior Cleaning': 'W',
+  'Body Polishing': 'P',
+  'Glass Polish': 'P',
+  'Interior & Exterior Polishing': 'P',
+  'Nano Ceramic Tint': 'T',
+  'Nano Ceramic Coating – Graphene Pro': 'C',
+  'Paint Protection Film (PPF)': 'F',
+};
+export const EXTRAS_TOKEN_LETTER = 'U'; // Other Services (covers, mats…)
+export const TOKEN_NAMES = { W: 'Washing', P: 'Polishing', T: 'Tinting', C: 'Coating', F: 'PPF', U: OTHER_SERVICES_TITLE };
+
+/**
+ * Tokens for an order, in the order the services were picked, one per letter.
+ * Orders with no known service (older data) keep the old "A172" style.
+ */
+export function tokensFor(number, services = [], extras = []) {
+  const letters = [];
+  asList(services).forEach((name) => {
+    const letter = TOKEN_LETTERS[name];
+    if (letter && !letters.includes(letter)) letters.push(letter);
+  });
+  if (extras.length > 0 && !letters.includes(EXTRAS_TOKEN_LETTER)) letters.push(EXTRAS_TOKEN_LETTER);
+  return (letters.length ? letters : ['A']).map((letter) => `${letter}${number}`);
+}
+
+export const formatQar =(amount) => `QAR ${Number(amount || 0).toLocaleString('en-US')}`;

@@ -17,7 +17,7 @@
 
 import { api } from './axiosInstance';
 
-export const BACKEND_HAS_SCREEN_ADS = false;
+export const BACKEND_HAS_SCREEN_ADS = true; // live since 21 Oct 2026
 
 const ADS = '/api/v1/screen-ads';
 const MULTIPART = { headers: { 'Content-Type': 'multipart/form-data' } };
