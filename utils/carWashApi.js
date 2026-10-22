@@ -135,7 +135,10 @@ export function mapBookingToOrder(b) {
   const extras = isShortLabel(b.add_ons || '')
     ? extrasFromNotes(b.special_instructions) || splitList(b.add_ons)
     : splitList(b.add_ons);
-  const tokens = tokensFor(bookingNumber(b), services, extras);
+  // Tokens issued by the server (W101 · T101, own counter per letter, daily);
+  // older orders without them get letter + order number.
+  const serverTokens = Array.isArray(b.tokens) ? b.tokens : String(b.tokens || '').split(',').map((t) => t.trim()).filter(Boolean);
+  const tokens = serverTokens.length ? serverTokens : tokensFor(bookingNumber(b), services, extras);
   return {
     id: String(b.booking_number || b.id),
     originalId: b.id,
@@ -287,7 +290,7 @@ export async function createCarWashOrder(values, source = ORDER_SOURCE.DASHBOARD
   if (!booking) return null;
   // Tokens from what was ordered, in case the reply leaves the services out.
   const order = mapBookingToOrder(booking);
-  const tokens = tokensFor(order.id, services, extras);
+  const tokens = order.tokens?.length && !order.tokens[0].startsWith('A') ? order.tokens : tokensFor(order.id, services, extras);
   return { ...order, tokens, queue: tokens.join(' · ') };
 }
 
@@ -346,7 +349,7 @@ export async function fetchQueue() {
           return {
             id: String(b.booking_number),
             originalId: Number(b.booking_number) || 0,
-            tokens: [String(b.booking_number)],
+            tokens: Array.isArray(b.tokens) && b.tokens.length ? b.tokens : [String(b.booking_number)],
             queue: String(b.booking_number),
             stage: STAGES.includes(status) ? status : 'collected',
             numberPlate: b.car_number || '',
