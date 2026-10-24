@@ -81,11 +81,22 @@ const ROLE_VERSION = '2';
  * Check if a JWT token is expired by decoding the payload.
  * Returns true if expired or unparseable.
  */
+/** The JWT's payload ({ id, username, role, exp }), or null if it can't be read. */
+function tokenPayload(token) {
+  try {
+    const part = String(token).split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    return JSON.parse(atob(part.padEnd(part.length + ((4 - (part.length % 4)) % 4), '=')));
+  } catch {
+    return null;
+  }
+}
+
 function isTokenExpired(token) {
   // Sessions from the old offline demo login are not valid on the real backend.
   if (String(token).startsWith('demo.')) return true;
   try {
-    const payload = JSON.parse(atob(token.split('.')[1]));
+    const payload = tokenPayload(token);
+    if (!payload) return true;
     if (!payload.exp) return false;
     // Add 60s buffer so we don't use a token that's about to expire
     return Date.now() >= (payload.exp * 1000) - 60000;
@@ -128,10 +139,14 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     const token = safeGetItem('token');
     const userData = safeGetJSON('user');
-    const userRole = safeGetItem('userRole');
+    // The role comes from the token itself, which is what the server checks.
+    // A role saved in the browser can be stale (e.g. "admin" counted as Super
+    // Admin before 21 Oct 2026) and would show buttons the server refuses.
+    const userRole = token ? roleFromServer(tokenPayload(token)?.role) : null;
     const current = safeGetItem('roleVersion') === ROLE_VERSION && isDashboardRole(userRole);
 
     if (token && !isTokenExpired(token) && current) {
+      localStorage.setItem('userRole', userRole);
       setIsLoggedIn(true);
       if (userData) setUser(userData);
       setRole(userRole);
