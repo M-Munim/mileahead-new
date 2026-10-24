@@ -355,8 +355,8 @@ export default function KioskPage() {
       order.plate ? `${t('Plate')}: ${order.plate}` : null,
       order.slot === 'Now' ? t('Starting now') : `${t('In')} ${t(order.slot)}`,
       `${t('Total')}: ${qar(order.total)}`,
-      '',
-      `${t('Please pay at the counter.')} ${t('Watch the queue screen for your number.')}`,
+      // Kept short on purpose: Arabic letters take ~3× the space in a link,
+      // and a long link makes the QR code too dense for a phone to read.
     ];
     return getWhatsAppUrl(lines.filter((l) => l !== null).join('\n'));
   };
@@ -660,7 +660,9 @@ export default function KioskPage() {
             {/* WhatsApp share: a code for the customer's own phone, so nothing opens on the kiosk */}
             <div className="mt-6 flex items-center gap-5 text-start border-2 border-green-600/30 bg-green-50 p-4">
               <div className="shrink-0 bg-white p-2 border border-gray-200">
-                <QRCodeSVG value={whatsAppLink(done)} size={132} level="M" />
+                {/* Large with low error correction: an Arabic message makes a long link,
+                    and bigger dots stay readable for a phone camera. */}
+                <QRCodeSVG value={whatsAppLink(done)} size={260} level="L" marginSize={1} />
               </div>
               <div>
                 <p className="text-xl font-extrabold text-gray-900 flex items-center gap-2">
