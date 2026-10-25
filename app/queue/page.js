@@ -32,7 +32,10 @@ const REFRESH_MS = 8000;
 const ADS_REFRESH_MS = 5 * 60 * 1000;
 const RELOAD_MS = 6 * 60 * 60 * 1000; // reload now and then: picks up updates, frees memory
 const NEW_READY_MS = 30000; // a car that just became ready blinks this long
-const MAX_CARDS = { waiting: 15, washing: 8, ready: 9 };
+// Columns that don't fit scroll by themselves (a TV has no touch or mouse).
+const SCROLL_PX_PER_SECOND = 28;
+const SCROLL_END_PAUSE_MS = 3000;   // wait at the top and at the bottom
+const SCROLL_USER_PAUSE_MS = 10000; // after a swipe / wheel on a touch screen
 
 const COLUMNS = [
   { key: 'waiting', en: 'Waiting',          ar: 'في الانتظار' },
@@ -79,6 +82,75 @@ function playChime(ctx) {
     osc.start(start);
     osc.stop(start + 0.65);
   });
+}
+
+// ─────────────────────────────────────────────────────────────
+// A column list that scrolls itself when it doesn't fit, like an airport
+// board: slowly down, pause, back to the top, pause. On a touch screen a
+// swipe or wheel takes over for a while. Fits → no movement.
+// ─────────────────────────────────────────────────────────────
+function AutoScroll({ className, children }) {
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    let frame;
+    let last = performance.now();
+    let pos = el.scrollTop; // own float position; scrollTop may round
+    let atBottom = false;
+    let pauseUntil = Date.now() + SCROLL_END_PAUSE_MS;
+
+    const userTookOver = () => { pauseUntil = Date.now() + SCROLL_USER_PAUSE_MS; atBottom = false; };
+    el.addEventListener('wheel', userTookOver, { passive: true });
+    el.addEventListener('touchstart', userTookOver, { passive: true });
+
+    const step = (now) => {
+      const dt = now - last;
+      last = now;
+      const max = el.scrollHeight - el.clientHeight;
+      if (Math.abs(el.scrollTop - pos) > 2) pos = el.scrollTop; // moved by hand
+
+      if (max <= 1) {
+        pos = 0;
+        atBottom = false;
+      } else if (Date.now() >= pauseUntil) {
+        if (atBottom) {
+          // Back to the top, then rest there before the next pass.
+          el.scrollTo({ top: 0, behavior: 'smooth' });
+          pos = 0;
+          atBottom = false;
+          pauseUntil = Date.now() + SCROLL_END_PAUSE_MS;
+        } else {
+          pos = Math.min(max, pos + (SCROLL_PX_PER_SECOND * dt) / 1000);
+          el.scrollTop = pos;
+          if (pos >= max - 1) {
+            atBottom = true;
+            pauseUntil = Date.now() + SCROLL_END_PAUSE_MS;
+          }
+        }
+      }
+      frame = requestAnimationFrame(step);
+    };
+    frame = requestAnimationFrame(step);
+
+    return () => {
+      cancelAnimationFrame(frame);
+      el.removeEventListener('wheel', userTookOver);
+      el.removeEventListener('touchstart', userTookOver);
+    };
+  }, []);
+
+  return (
+    <div
+      ref={ref}
+      aria-live="polite"
+      className={`flex-1 min-h-0 overflow-y-auto [&::-webkit-scrollbar]:hidden ${className}`}
+      style={{ scrollbarWidth: 'none' }}
+    >
+      {children}
+    </div>
+  );
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -321,7 +393,6 @@ export default function QueuePage() {
         {COLUMNS.map((col) => {
           const style = COLUMN_STYLE[col.key];
           const list = byStage(col.key);
-          const shown = list.slice(0, MAX_CARDS[col.key]);
           const big = col.key === 'ready';
           return (
             <section key={col.key} className={`flex flex-col min-h-0 overflow-hidden bg-white/[0.04] border border-white/10 ${style.order}`} aria-label={col.en}>
@@ -329,8 +400,8 @@ export default function QueuePage() {
                 <span className="text-[3.6vmin] font-black">{col.en}</span>
                 <span className="text-[3vmin] font-bold opacity-90" dir="rtl" lang="ar">{col.ar}</span>
               </h2>
-              <div className={`flex-1 grid content-start gap-[1.2vmin] p-[1.6vmin] ${style.grid}`} aria-live="polite">
-                {shown.map((car) => (
+              <AutoScroll className={`grid content-start gap-[1.2vmin] p-[1.6vmin] ${style.grid}`}>
+                {list.map((car) => (
                   <div
                     key={car.id}
                     className={`flex flex-col items-center justify-center text-center ${big ? 'py-[2.4vmin]' : 'py-[1.6vmin]'} ${style.card} ${newReady[car.id] ? 'animate-pulse ring-[0.5vmin] ring-white' : ''}`}
@@ -351,15 +422,10 @@ export default function QueuePage() {
                     )}
                   </div>
                 ))}
-                {list.length > shown.length && (
-                  <div className="col-span-full text-center text-[2.6vmin] font-bold text-white/60 py-[1vmin]">
-                    + {list.length - shown.length} more
-                  </div>
-                )}
                 {loaded && list.length === 0 && (
                   <p className="col-span-full text-center text-[3vmin] text-white/30 py-[3vmin]">—</p>
                 )}
-              </div>
+              </AutoScroll>
             </section>
           );
         })}
