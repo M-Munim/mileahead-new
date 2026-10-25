@@ -1,13 +1,18 @@
 'use client';
 
-import { useState, useMemo, useCallback, useEffect } from 'react';
-import { Search, RotateCcw, RefreshCw, Download, Megaphone, Users, X, Info, Loader2, AlertCircle } from 'lucide-react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import {
+  Search, RotateCcw, RefreshCw, Download, Megaphone, Users, X, Info, Loader2, AlertCircle, ChevronLeft, ChevronRight,
+} from 'lucide-react';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import Toast from '../components/Toast';
 import { useFocusTrap } from '@/app/hooks/useFocusTrap';
 import { DISCOUNTS, PAYMENT_TYPES, SERVICE_GROUPS, ALL_VEHICLES, OTHER_SERVICES_TITLE } from '../../utils/priceList';
 import { fetchCarWashOrders } from '../../utils/carWashApi';
+
+/** Customers per page in the table (paging is on screen; server-side paging is planned). */
+const ROWS_PER_PAGE = 100;
 
 // ─────────────────────────────────────────────────────────────
 // Customer types (segments)
@@ -350,7 +355,22 @@ export default function CustomerDataPage() {
     return counts;
   }, [customers]);
 
-  const allShownSelected = filtered.length > 0 && filtered.every((c) => selectedIds.has(c.id));
+  // Page of the table; back to page 1 whenever the filters change.
+  const pageKey = JSON.stringify(filters);
+  const [pageState, setPageState] = useState({ key: '', n: 1 });
+  const pageCount = Math.max(1, Math.ceil(filtered.length / ROWS_PER_PAGE));
+  const currentPage = Math.min(pageState.key === pageKey ? pageState.n : 1, pageCount);
+  const pageRows = useMemo(
+    () => filtered.slice((currentPage - 1) * ROWS_PER_PAGE, currentPage * ROWS_PER_PAGE),
+    [filtered, currentPage],
+  );
+  const tableRef = useRef(null);
+  const goToPage = (n) => {
+    setPageState({ key: pageKey, n });
+    if (tableRef.current) tableRef.current.scrollTop = 0;
+  };
+
+  const allShownSelected = pageRows.length > 0 && pageRows.every((c) => selectedIds.has(c.id));
   const hasFilters = Object.values(filters).some(Boolean);
 
   const toggleSelected = (id) => {
@@ -364,7 +384,7 @@ export default function CustomerDataPage() {
   const toggleAllShown = () => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      filtered.forEach((c) => (allShownSelected ? next.delete(c.id) : next.add(c.id)));
+      pageRows.forEach((c) => (allShownSelected ? next.delete(c.id) : next.add(c.id)));
       return next;
     });
   };
@@ -400,7 +420,7 @@ export default function CustomerDataPage() {
         </div>
 
         <main className="flex-1 px-4 md:px-6 pb-6 overflow-x-hidden">
-          <div className="max-w-6xl mx-auto space-y-4">
+          <div className="space-y-4">
             {/* Segment cards */}
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
               {segmentCards.map((card) => {
@@ -528,28 +548,28 @@ export default function CustomerDataPage() {
 
               {/* Table */}
               <div className="p-4 sm:p-5">
-                <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                <div ref={tableRef} className="overflow-auto max-h-[70vh] border border-gray-200 rounded-lg">
                   <table className="w-full border-collapse min-w-[1250px]">
                     <thead>
                       <tr>
-                        <th className="bg-gray-50 pl-3.5 pr-1 py-2.5 border-b border-gray-200 w-8">
+                        <th className="sticky top-0 z-10 bg-gray-50 pl-3.5 pr-1 py-2.5 border-b border-gray-200 w-8">
                           <input
                             type="checkbox"
                             checked={allShownSelected}
                             onChange={toggleAllShown}
                             className="w-4 h-4 accent-[var(--primary)]"
-                            aria-label="Select all customers shown"
+                            aria-label="Select all customers on this page"
                           />
                         </th>
                         {['Customer', 'Phone', 'Plate', 'Vehicle', 'Favourite service', 'Discount', 'Visits', 'Last visit', 'Spent (QAR)', 'Payment type', 'Status', 'Type'].map((h) => (
-                          <th key={h} className="text-left text-[10px] uppercase tracking-wide text-gray-500 font-semibold bg-gray-50 px-3 py-2.5 border-b border-gray-200 whitespace-nowrap">
+                          <th key={h} className="sticky top-0 z-10 text-left text-[10px] uppercase tracking-wide text-gray-500 font-semibold bg-gray-50 px-3 py-2.5 border-b border-gray-200 whitespace-nowrap">
                             {h}
                           </th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
-                      {filtered.map((c) => (
+                      {pageRows.map((c) => (
                         <tr key={c.id} className="hover:bg-gray-50 border-b border-gray-100 last:border-0">
                           <td className="pl-3.5 pr-1 py-3">
                             <input
@@ -606,6 +626,48 @@ export default function CustomerDataPage() {
                     </div>
                   )}
                 </div>
+
+                {filtered.length > ROWS_PER_PAGE && (
+                  <nav className="flex flex-wrap items-center justify-between gap-3 mt-3" aria-label="Customer pages">
+                    <span className="text-xs text-gray-500">
+                      Showing <b className="text-gray-800">{(currentPage - 1) * ROWS_PER_PAGE + 1}–{Math.min(currentPage * ROWS_PER_PAGE, filtered.length)}</b> of <b className="text-gray-800">{filtered.length}</b> customers
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => goToPage(currentPage - 1)}
+                        disabled={currentPage === 1}
+                        className="flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-40"
+                      >
+                        <ChevronLeft className="w-3.5 h-3.5" aria-hidden="true" /> Previous
+                      </button>
+                      {Array.from({ length: pageCount }, (_, i) => i + 1).map((n) => (
+                        <button
+                          key={n}
+                          type="button"
+                          onClick={() => goToPage(n)}
+                          aria-current={n === currentPage ? 'page' : undefined}
+                          className={`min-w-[32px] text-xs font-semibold px-2 py-1.5 border transition-colors ${
+                            n === currentPage
+                              ? 'bg-[var(--primary)] text-white border-[var(--primary)]'
+                              : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                          }`}
+                        >
+                          {n}
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => goToPage(currentPage + 1)}
+                        disabled={currentPage === pageCount}
+                        className="flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-40"
+                      >
+                        Next <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
+                      </button>
+                    </div>
+                  </nav>
+                )}
+
                 <p className="text-[11px] text-gray-400 mt-3">
                   Built from your car wash orders · Unpaid = the customer has at least one unpaid order · tick customers to send them a promotion
                 </p>

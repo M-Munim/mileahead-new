@@ -197,7 +197,7 @@ export default function ScreenAdsPage() {
         </div>
 
         <main className="flex-1 px-4 md:px-6 pb-6 overflow-x-hidden">
-          <div className="max-w-6xl mx-auto space-y-4">
+          <div className="space-y-4">
             <div className="bg-white rounded-xl shadow-sm border border-gray-100">
               {/* Panel header */}
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-5 py-4 border-b border-gray-100">

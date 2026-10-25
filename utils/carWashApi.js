@@ -54,6 +54,8 @@ export const STAGES = ['waiting', 'washing', 'ready', 'collected'];
 // JSON default in axios 1.x — axios would turn the FormData into JSON.) In the
 // browser axios then drops this header so the browser adds the boundary itself.
 const MULTIPART = { headers: { 'Content-Type': 'multipart/form-data' } };
+// 100 per request: the server needs ~2 s for 100 rows but ~18 s for 500, past
+// the 15 s request timeout ("Could not load orders").
 const PAGE_SIZE = 100;
 const MAX_PAGES = 20;
 
@@ -188,23 +190,30 @@ export function mapBookingToAppointment(b) {
 
 /** Every booking for one Service, all pages, newest first. */
 async function fetchAllBookings(Service) {
-  const all = [];
-  for (let page = 1; page <= MAX_PAGES; page += 1) {
-    const res = await bookingService.getAllBookings({
-      status: 'all',
-      Service, // backend filter key is case-sensitive
-      field: '',
-      search: '',
-      sorting: { field: 'id', order: 'desc' },
-      page,
-      limit: PAGE_SIZE,
-    });
-    const rows = extractArray(res);
-    all.push(...rows);
-    const totalPages = num(res.data?.data?.total_pages) || 1;
-    if (page >= totalPages || rows.length < PAGE_SIZE) break;
-  }
-  return all;
+  const getPage = (page) => bookingService.getAllBookings({
+    status: 'all',
+    Service, // backend filter key is case-sensitive
+    field: '',
+    search: '',
+    sorting: { field: 'id', order: 'desc' },
+    page,
+    limit: PAGE_SIZE,
+  });
+
+  // Page 1 tells us how many pages there are; the rest load at the same time
+  // (faster, and a smaller window for rows to shift between pages).
+  const first = await getPage(1);
+  const totalPages = Math.min(num(first.data?.data?.total_pages) || 1, MAX_PAGES);
+  const rest = await Promise.all(
+    Array.from({ length: totalPages - 1 }, (_, i) => getPage(i + 2)),
+  );
+  const all = [first, ...rest].flatMap((res) => extractArray(res));
+
+  // A booking created between two page requests shifts every row down by one,
+  // so the last row of one page comes back as the first of the next (the same
+  // order shown twice). Keep each booking once.
+  const seen = new Set();
+  return all.filter((b) => (seen.has(b.id) ? false : (seen.add(b.id), true)));
 }
 
 function toFormData(fields) {

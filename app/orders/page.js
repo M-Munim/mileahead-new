@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Search, Phone, X, Clock, Droplets, CheckCircle,
   RefreshCw, ClipboardList, Copy, Trash2, MessageCircle, Plus, CalendarPlus, CalendarDays,
-  Loader2, AlertCircle, ShieldAlert,
+  Loader2, AlertCircle, ShieldAlert, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
@@ -24,6 +24,12 @@ import {
   deleteOrder, fetchAppointments, createAppointment, cancelAppointment, setOrderStage, STAGES,
   requestOrderDelete, rejectDeleteRequest,
 } from '../../utils/carWashApi';
+
+/**
+ * The table shows this many orders per page (all orders are loaded; paging is
+ * on screen only). Server-side pagination is planned for a later phase.
+ */
+const ROWS_PER_PAGE = 100;
 
 /** Orders refresh in the background so kiosk orders from any device show up. */
 const REFRESH_MS = 30000;
@@ -517,6 +523,22 @@ export default function OrdersPage() {
     });
   }, [orders, activeTab, query]);
 
+  // Page of the table. It goes back to page 1 whenever the tab or search
+  // changes (kept with its tab + search, so no effect is needed).
+  const pageKey = `${activeTab}|${query}`;
+  const [pageState, setPageState] = useState({ key: '', n: 1 });
+  const pageCount = Math.max(1, Math.ceil(visibleOrders.length / ROWS_PER_PAGE));
+  const currentPage = Math.min(pageState.key === pageKey ? pageState.n : 1, pageCount);
+  const pageOrders = useMemo(
+    () => visibleOrders.slice((currentPage - 1) * ROWS_PER_PAGE, currentPage * ROWS_PER_PAGE),
+    [visibleOrders, currentPage],
+  );
+  const tableRef = useRef(null);
+  const goToPage = (n) => {
+    setPageState({ key: pageKey, n });
+    if (tableRef.current) tableRef.current.scrollTop = 0;
+  };
+
   const visibleAppointments = useMemo(() => {
     const q = query.trim().toLowerCase();
     return appointments
@@ -534,7 +556,7 @@ export default function OrdersPage() {
     () => orders.filter((o) => checkedIds.has(o.id)),
     [orders, checkedIds]
   );
-  const allVisibleChecked = visibleOrders.length > 0 && visibleOrders.every((o) => checkedIds.has(o.id));
+  const allVisibleChecked = pageOrders.length > 0 && pageOrders.every((o) => checkedIds.has(o.id));
 
   const toggleChecked = useCallback((id) => {
     setCheckedIds((prev) => {
@@ -547,11 +569,11 @@ export default function OrdersPage() {
   const toggleAllVisible = useCallback(() => {
     setCheckedIds((prev) => {
       const next = new Set(prev);
-      if (allVisibleChecked) visibleOrders.forEach((o) => next.delete(o.id));
-      else visibleOrders.forEach((o) => next.add(o.id));
+      if (allVisibleChecked) pageOrders.forEach((o) => next.delete(o.id));
+      else pageOrders.forEach((o) => next.add(o.id));
       return next;
     });
-  }, [allVisibleChecked, visibleOrders]);
+  }, [allVisibleChecked, pageOrders]);
 
   const handleCopyMessage = useCallback(async (list) => {
     const items = Array.isArray(list) ? list : [list];
@@ -739,7 +761,7 @@ export default function OrdersPage() {
         </div>
 
         <main className="flex-1 px-4 md:px-6 pb-6 overflow-x-hidden">
-          <div className="max-w-6xl mx-auto">
+          <div>
             <div className="bg-white rounded-xl shadow-sm border border-gray-100">
               {/* Panel header */}
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-5 py-4 border-b border-gray-100">
@@ -937,23 +959,23 @@ export default function OrdersPage() {
                     )}
                   </div>
                 ) : (
-                <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                <div ref={tableRef} className="overflow-auto max-h-[70vh] border border-gray-200 rounded-lg">
                   <table className="w-full border-collapse min-w-[1440px]">
                     <thead>
                       <tr>
-                        <th className="bg-gray-50 pl-3.5 pr-1 py-2.5 border-b border-gray-200 w-8">
+                        <th className="sticky top-0 z-10 bg-gray-50 pl-3.5 pr-1 py-2.5 border-b border-gray-200 w-8">
                           <input
                             type="checkbox"
                             checked={allVisibleChecked}
                             onChange={toggleAllVisible}
                             className="w-4 h-4 accent-[var(--primary)]"
-                            aria-label="Select all orders in this view"
+                            aria-label="Select all orders on this page"
                           />
                         </th>
                         {['Order', 'Customer', 'Service', 'Number Plate', 'Stage', 'Discount', 'Payment Method', 'Payment Type', 'Total', 'Time', 'Status', ''].map((h, i) => (
                           <th
                             key={i}
-                            className="text-left text-[10px] uppercase tracking-wide text-gray-500 font-semibold bg-gray-50 px-3.5 py-2.5 border-b border-gray-200 whitespace-nowrap"
+                            className="sticky top-0 z-10 text-left text-[10px] uppercase tracking-wide text-gray-500 font-semibold bg-gray-50 px-3.5 py-2.5 border-b border-gray-200 whitespace-nowrap"
                           >
                             {h}
                           </th>
@@ -961,7 +983,7 @@ export default function OrdersPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {visibleOrders.map((o) => (
+                      {pageOrders.map((o) => (
                         <tr
                           key={o.id}
                           onClick={() => setSelectedId(o.id)}
@@ -1117,6 +1139,43 @@ export default function OrdersPage() {
                     </div>
                   )}
                 </div>
+                )}
+
+                {!isAppointmentsTab && visibleOrders.length > ROWS_PER_PAGE && (
+                  <nav className="flex flex-wrap items-center justify-between gap-3 mt-3" aria-label="Orders pages">
+                    <span className="text-xs text-gray-500">
+                      Showing <b className="text-gray-800">{(currentPage - 1) * ROWS_PER_PAGE + 1}–{Math.min(currentPage * ROWS_PER_PAGE, visibleOrders.length)}</b> of <b className="text-gray-800">{visibleOrders.length}</b> orders
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => goToPage(currentPage - 1)}
+                        disabled={currentPage === 1}
+                        className={`flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 transition-colors disabled:opacity-40 ${TONE.ghost}`}
+                      >
+                        <ChevronLeft className="w-3.5 h-3.5" aria-hidden="true" /> Previous
+                      </button>
+                      {Array.from({ length: pageCount }, (_, i) => i + 1).map((n) => (
+                        <button
+                          key={n}
+                          type="button"
+                          onClick={() => goToPage(n)}
+                          aria-current={n === currentPage ? 'page' : undefined}
+                          className={`min-w-[32px] text-xs font-semibold px-2 py-1.5 transition-colors ${n === currentPage ? TONE.primary : TONE.ghost}`}
+                        >
+                          {n}
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => goToPage(currentPage + 1)}
+                        disabled={currentPage === pageCount}
+                        className={`flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 transition-colors disabled:opacity-40 ${TONE.ghost}`}
+                      >
+                        Next <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
+                      </button>
+                    </div>
+                  </nav>
                 )}
 
                 <div className="flex items-center gap-1.5 text-[11px] text-gray-400 mt-3">
