@@ -62,15 +62,21 @@ function daysSince(isoDate, today) {
 const firstFilled = (list, pick) => list.map(pick).find((v) => v) || '';
 
 /**
- * One row per customer (grouped by phone number, or by name when there is no
- * phone). `orders` come newest first, so the first one is the latest visit.
+ * One row per car: phone + number plate (just the phone when there is no
+ * plate, or the name when there is no phone either). `orders` come newest
+ * first, so the first one is the latest visit.
  */
 function buildCustomers(orders) {
   const today = new Date();
   const groups = new Map();
   orders.forEach((o) => {
+    // One row per car: phone + number plate. Staff enter the car as the
+    // customer's name, and one phone can bring several cars (e.g. a Duster
+    // and a Pajero on 77875504) — grouping by phone alone merged them.
     const phoneKey = (o.customer.phone || '').replace(/\D/g, '');
-    const key = phoneKey || `name:${o.customer.name.trim().toLowerCase()}`;
+    const plateKey = String(o.numberPlate || '').replace(/\s+/g, '').toUpperCase();
+    const who = phoneKey || `name:${o.customer.name.trim().toLowerCase()}`;
+    const key = plateKey ? `${who}|${plateKey}` : who;
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(o);
   });
