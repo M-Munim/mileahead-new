@@ -387,6 +387,17 @@ export const updateOrderField = (order, field, value) => {
 
 export const deleteOrder = (order) => bookingService.deleteBooking(order.originalId);
 
+/** Makes the order's receipt PDF and stores it on the server; resolves to its public link. */
+export async function saveOrderReceipt(order) {
+  const { buildReceiptPdf } = await import('./receiptPdf');
+  const fd = new FormData();
+  fd.append('file', await buildReceiptPdf(order), `receipt-${order.id}.pdf`);
+  const res = await bookingService.uploadReceipt(order.originalId, fd, MULTIPART);
+  const url = res.data?.data?.url;
+  if (!url) throw new Error('The server did not return a receipt link.');
+  return url;
+}
+
 // ── Delete requests (Admins can't delete; the Super Admin approves) ──
 // Columns delete_requested, delete_reason, delete_requested_by, delete_requested_at
 // are requested from the backend developer (BACKEND_REQUESTS.md, section 9).

@@ -53,6 +53,18 @@ export async function copyText(text) {
     }
 }
 
+/**
+ * A phone number as WhatsApp wants it (country code + number, digits only),
+ * or null when it can't be one. A local 8-digit Qatar mobile (3/5/6/7…) gets
+ * 974 in front; anything else must already carry its country code.
+ */
+export function toWhatsAppNumber(phone) {
+    const digits = String(phone || '').replace(/\D/g, '').replace(/^00/, '');
+    if (/^[3567]\d{7}$/.test(digits)) return `974${digits}`;
+    if (digits.startsWith('974')) return /^974[3567]\d{7}$/.test(digits) ? digits : null;
+    return /^[1-9]\d{9,14}$/.test(digits) ? digits : null;
+}
+
 /** wa.me link. With a phone it opens that chat; without one WhatsApp asks who to send to. */
 export function getWhatsAppUrl(message, phone) {
     const digits = String(phone || '').replace(/\D/g, '');

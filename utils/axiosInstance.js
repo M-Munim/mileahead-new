@@ -234,4 +234,7 @@ export const bookingService = {
 
     deleteBooking: (id) =>
         api.put(API_PATHS.BOOKING.DELETE_BOOKING(id)),
+
+    uploadReceipt: (id, body, config = {}) =>
+        api.post(API_PATHS.BOOKING.UPLOAD_RECEIPT(id), body, config),
 };

@@ -14,7 +14,7 @@ import NewOrderModal from '../components/NewOrderModal';
 import AppointmentModal from '../components/AppointmentModal';
 import DeleteRequestModal from '../components/DeleteRequestModal';
 import { useAuth } from '../contexts/AuthContext';
-import { copyText, getWhatsAppUrl } from '../../utils/location';
+import { copyText, getWhatsAppUrl, toWhatsAppNumber } from '../../utils/location';
 import {
   formatQar, couponApplies, COUPON_RATE,
   PAYMENT_METHODS, PAYMENT_TYPES, OTHER_SERVICES_TITLE,
@@ -22,7 +22,7 @@ import {
 import {
   fetchCarWashOrders, createCarWashOrder, setOrderPaymentStatus, updateOrderField as saveOrderField,
   deleteOrder, fetchAppointments, createAppointment, cancelAppointment, setOrderStage, STAGES,
-  requestOrderDelete, rejectDeleteRequest,
+  requestOrderDelete, rejectDeleteRequest, saveOrderReceipt,
 } from '../../utils/carWashApi';
 
 /**
@@ -126,6 +126,115 @@ const buildCleanerMessage = (order) => {
   ];
   return lines.filter((l) => l !== null).join('\n').replace(/\n{3,}/g, '\n\n');
 };
+
+/** WhatsApp message to the customer, with the link to their receipt PDF. */
+const buildReceiptMessage = (order, receiptUrl) => {
+  const name = order.customer.name && order.customer.name !== 'Walk-in customer' ? ` ${order.customer.name}` : '';
+  const lines = [
+    `*Magic Track — Receipt for Order #${order.id}*`,
+    '',
+    `Hi${name}, thank you for choosing Magic Track!`,
+    '',
+    order.tokens?.length ? `Token: *${order.tokens.join(' · ')}*` : null,
+    `Car: ${order.vehicle || '—'}${order.numberPlate ? ` (${order.numberPlate})` : ''}`,
+    `Services: ${[serviceLabel(order), ...(order.extras || [])].join(', ')}`,
+    `Total: ${formatQar(order.total)} (${order.status === 'paid' ? 'Paid' : 'Unpaid'})`,
+    '',
+    `Your receipt (PDF): ${receiptUrl}`,
+  ];
+  return lines.filter((l) => l !== null).join('\n');
+};
+
+/**
+ * "Send Receipt on WhatsApp": makes the receipt PDF, stores it on the server and
+ * opens WhatsApp on the customer's number with the message and the PDF link
+ * written — staff only press Send. Messages go from whichever WhatsApp is
+ * logged in on this computer (the Magic Track number at reception).
+ */
+function SendReceiptButton({ order }) {
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState('');
+  const [openLink, setOpenLink] = useState(''); // only when the browser blocked the new tab
+  const [sent, setSent] = useState(false);
+  const phone = order.customer.phone;
+
+  const send = async () => {
+    setError('');
+    setOpenLink('');
+    setSent(false);
+    const number = toWhatsAppNumber(phone);
+    if (!phone) {
+      setError('This order has no phone number, so there is no one to send the receipt to.');
+      return;
+    }
+    if (!number) {
+      setError(`"${phone}" is not a valid WhatsApp number. Qatar numbers have 8 digits and start with 3, 5, 6 or 7; other countries need their country code.`);
+      return;
+    }
+
+    // Open the tab now, while it still counts as the click, so it isn't blocked as a pop-up.
+    const tab = window.open('', '_blank');
+    if (tab) {
+      tab.opener = null;
+      tab.document.title = 'Opening WhatsApp…';
+      tab.document.body.innerHTML = '<p style="font:16px sans-serif;padding:24px">Preparing the receipt…</p>';
+    }
+    setSending(true);
+    try {
+      const receiptUrl = await saveOrderReceipt(order);
+      const link = getWhatsAppUrl(buildReceiptMessage(order, receiptUrl), number);
+      if (tab && !tab.closed) tab.location.href = link;
+      else setOpenLink(link);
+      setSent(true);
+    } catch (e) {
+      console.error(`Error making the receipt for #${order.id}:`, e);
+      tab?.close();
+      setError(`Could not make the receipt: ${e.message || 'server error'}. Please try again.`);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold mt-4 mb-2">Receipt for Customer</div>
+      <button
+        type="button"
+        onClick={send}
+        disabled={sending}
+        className={`w-full py-2.5 text-[12.5px] font-semibold flex items-center justify-center gap-1.5 transition-colors disabled:opacity-70 ${TONE.green}`}
+      >
+        {sending
+          ? <><Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> Preparing receipt…</>
+          : <><MessageCircle className="w-4 h-4" aria-hidden="true" /> Send Receipt on WhatsApp</>}
+      </button>
+      {error ? (
+        <div className="mt-2 p-2.5 bg-red-50 border border-red-200 text-[11.5px] text-red-700 flex gap-1.5" role="alert">
+          <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-px" aria-hidden="true" /> {error}
+        </div>
+      ) : openLink ? (
+        <a
+          href={openLink}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-2 block text-center p-2.5 bg-green-50 border border-green-200 text-[12px] font-semibold text-green-700 hover:bg-green-100"
+        >
+          Receipt ready — click here to open WhatsApp
+        </a>
+      ) : sent ? (
+        <p className="text-[10.5px] text-green-700 mt-1.5" role="status">
+          WhatsApp opened with the receipt — press <b>Send</b> there.
+        </p>
+      ) : (
+        <p className="text-[10px] text-gray-500 mt-1.5">
+          {phone
+            ? `Opens WhatsApp on ${phone} with the receipt ready — just press Send. If this number has no WhatsApp, WhatsApp will say so.`
+            : 'No phone number on this order.'}
+        </p>
+      )}
+    </>
+  );
+}
 
 // ─────────────────────────────────────────────────────────────
 // Status pill
@@ -291,6 +400,8 @@ function OrderDrawer({
               No cleaner assigned yet.
             </div>
           )}
+
+          <SendReceiptButton key={order.id} order={order} />
 
           {/* Job sheet for the cleaner */}
           <div className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold mt-4 mb-2">Send to Cleaner</div>
@@ -630,6 +741,8 @@ export default function OrdersPage() {
     setShowNewOrder(false);
     setActiveTab('all');
     setQuery('');
+    // Open the new order, so staff can send the customer their receipt straight away.
+    if (created) setSelectedId(created.id);
     setToast({ message: `Order${created ? ` #${created.id}` : ''} for ${values.customerName} saved`, type: 'success' });
   }, [loadData]);
 

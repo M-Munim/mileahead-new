@@ -96,5 +96,7 @@ export const API_PATHS = {
         // points at identity/update-profile by mistake). Verified on the live
         // Magic Track API: PUT /api/v1/booking/delete-booking/:id works.
         DELETE_BOOKING: (bookingId) => `/api/v1/booking/delete-booking/${bookingId}`,
+        // Receipt PDF for the customer's WhatsApp message; returns { url }.
+        UPLOAD_RECEIPT: (bookingId) => `/api/v1/booking/receipt/${bookingId}`,
     },
 };
