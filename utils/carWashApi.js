@@ -6,7 +6,7 @@
 //   POST /api/v1/booking/all-bookings            list   (filter by Service)
 //   POST /api/v1/booking/update-status           { bookingId, newStatus }
 //   PUT  /api/v1/booking/update-booking/:id      edit fields (multipart)
-//   PUT  /api/v1/booking/delete-booking/:id      delete (not in the collection — verified on the live API)
+//   PUT  /api/v1/booking/delete-booking/:id      delete (direct for staff roles)
 //
 // Verified on the live backend (13 Oct 2026): the booking endpoint writes every
 // field it receives straight into the bookings table, so an UNKNOWN field makes
@@ -37,7 +37,7 @@
 // Their column types are not documented, so if the server rejects them the
 // order is saved again without them rather than lost (see createCarWashOrder).
 
-import { bookingService } from './axiosInstance';
+import { activityLogService, bookingService } from './axiosInstance';
 import { BASE_URL } from './apiPaths';
 import { extractArray } from './extractArray';
 import { servicesPrice, findExtra, joinServices, splitServices, tokensFor } from './priceList';
@@ -168,9 +168,6 @@ export function mapBookingToOrder(b) {
     total: num(b.price),
     cleaner: null,
     notes: b.special_instructions || '',
-    deleteRequest: Number(b.delete_requested) === 1
-      ? { reason: b.delete_reason || '', by: b.delete_requested_by || '', at: b.delete_requested_at || '' }
-      : null,
   };
 }
 
@@ -373,16 +370,21 @@ export async function fetchQueue() {
   return fromAllBookings();
 }
 
-/** Payment method (Cash / Card) or payment type (Fawran…) changed from the table. */
+/** Payment method/type or final customer price changed from the orders table. */
 const FIELD_COLUMNS = {
   paymentMethod: ['payment_method'],
   paymentType: ['payment_type', 'payment_channel'],
+  total: ['price'],
 };
-export const updateOrderField = (order, field, value) => {
+export const updateOrderField = async (order, field, value) => {
   const fd = new FormData();
   // Sent even when empty, so choosing "—" clears the value.
   FIELD_COLUMNS[field].forEach((column) => fd.append(column, value ?? ''));
-  return bookingService.updateBooking(order.originalId, fd, MULTIPART);
+  const res = await bookingService.updateBooking(order.originalId, fd, MULTIPART);
+  if (res.data?.success === false) {
+    throw new Error(res.data?.message || `The server did not save the ${field}.`);
+  }
+  return res;
 };
 
 export const deleteOrder = (order) => bookingService.deleteBooking(order.originalId);
@@ -398,37 +400,18 @@ export async function saveOrderReceipt(order) {
   return url;
 }
 
-// ── Delete requests (Admins can't delete; the Super Admin approves) ──
-// Columns delete_requested, delete_reason, delete_requested_by, delete_requested_at
-// are requested from the backend developer (BACKEND_REQUESTS.md, section 9).
-const nowSql = () => {
-  const d = new Date();
-  const p = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
-};
-
-async function saveDeleteFields(order, fields) {
-  try {
-    return await bookingService.updateBooking(order.originalId, toFormData(fields), MULTIPART);
-  } catch (error) {
-    if (isRejectedField(error)) throw new Error('Delete requests need a server update from the backend developer first.');
-    throw error;
+/** Recent booking deletions for the Super Admin's audit view. */
+export async function fetchDeletedBookingHistory() {
+  const res = await activityLogService.getAll({ action: 'booking.delete', page: 1, limit: 100 });
+  if (res.data?.success === false) {
+    throw new Error(res.data?.message || 'Could not load deleted booking history.');
   }
+  const data = res.data?.data;
+  if (!Array.isArray(data?.results)) {
+    throw new Error('The server returned an invalid deletion history response.');
+  }
+  return data;
 }
-
-/** Admin: ask the Super Admin to delete this order. Nothing is removed. */
-export function requestOrderDelete(order, reason, requestedBy) {
-  const at = nowSql();
-  return saveDeleteFields(order, {
-    delete_requested: 1,
-    delete_reason: reason,
-    delete_requested_by: requestedBy,
-    delete_requested_at: at,
-  }).then(() => ({ reason, by: requestedBy, at }));
-}
-
-/** Super Admin: keep the order. (Approving = deleteOrder.) */
-export const rejectDeleteRequest = (order) => saveDeleteFields(order, { delete_requested: 0 });
 
 // ─────────────────────────────────────────────────────────────
 // Appointments (bookings with Service = 'appointment')

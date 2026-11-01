@@ -4,10 +4,10 @@ import { createContext, useContext, useState, useEffect, useCallback } from 'rea
 
 const AuthContext = createContext();
 
-// Dashboard roles (client request, 18 Oct 2026):
-//   Super Admin — sees and changes everything, deletes, and approves Admins' delete requests.
-//   Admin       — enters and updates orders (paid, stage, payment), Customer Data and
-//                 Screen Ads, but cannot delete: they send a delete request instead.
+// Dashboard roles:
+//   Super Admin — sees and changes everything, including the deletion history.
+//   Admin       — manages orders and can delete directly; deletions are recorded
+//                 for the Super Admin in the activity log.
 export const ROLES = {
   SUPER_ADMIN: 'super_admin',
   ADMIN: 'admin',
@@ -28,8 +28,7 @@ export const ROLE_PERMISSIONS = {
     canManageFinance: true,
     canManagePricing: true,
     canDeleteRecords: true,
-    canReviewDeleteRequests: true,
-    canRequestDelete: false, // deletes directly
+    canDeleteBookings: true,
     canManageFleet: true,
     canAccessReports: true,
     canManageSettings: true,
@@ -41,19 +40,14 @@ export const ROLE_PERMISSIONS = {
     canManageFinance: true,
     canManagePricing: false,
     canDeleteRecords: false,
-    canReviewDeleteRequests: false,
-    canRequestDelete: true,
+    canDeleteBookings: true,
     canManageFleet: true,
     canAccessReports: true,
     canManageSettings: true,
   },
 };
 
-/**
- * Until the backend has a super_admin role, its existing 'admin' account (the
- * owner's) is the Super Admin and 'manager' accounts are Admins. Set this to
- * true once the backend uses super_admin / admin, so 'admin' means Admin.
- */
+/** The backend's admin and manager roles both map to the dashboard's Admin role. */
 export const BACKEND_HAS_SUPER_ADMIN_ROLE = true; // super_admin role live since 21 Oct 2026
 
 /**

@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Search, Phone, X, Clock, Droplets, CheckCircle,
   RefreshCw, ClipboardList, Copy, Trash2, MessageCircle, Plus, CalendarPlus, CalendarDays,
-  Loader2, AlertCircle, ShieldAlert, ChevronLeft, ChevronRight,
+  Loader2, AlertCircle, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
@@ -12,7 +12,6 @@ import Toast from '../components/Toast';
 import ConfirmationDialog from '../components/ConfirmationDialog';
 import NewOrderModal from '../components/NewOrderModal';
 import AppointmentModal from '../components/AppointmentModal';
-import DeleteRequestModal from '../components/DeleteRequestModal';
 import { useAuth } from '../contexts/AuthContext';
 import { copyText, getWhatsAppUrl, toWhatsAppNumber } from '../../utils/location';
 import {
@@ -22,7 +21,7 @@ import {
 import {
   fetchCarWashOrders, createCarWashOrder, setOrderPaymentStatus, updateOrderField as saveOrderField,
   deleteOrder, fetchAppointments, createAppointment, cancelAppointment, setOrderStage, STAGES,
-  requestOrderDelete, rejectDeleteRequest, saveOrderReceipt,
+  fetchDeletedBookingHistory, saveOrderReceipt,
 } from '../../utils/carWashApi';
 
 /**
@@ -65,7 +64,7 @@ const TABS = [
   { key: 'unpaid', label: 'Unpaid' },
   { key: 'paid',   label: 'Paid' },
   { key: 'appointments', label: 'Appointments' },
-  { key: 'requests', label: 'Delete requests' }, // only shown while there are some
+  { key: 'deleted', label: 'Deletion history' },
 ];
 
 const APPOINTMENT_PILL = {
@@ -92,8 +91,6 @@ const formatTime = (hhmm) => {
 };
 
 const byDateTime = (a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`);
-
-const requestWhen = (at) => String(at || '').replace('T', ' ').slice(0, 16);
 
 const getInitial = (name) => (name?.trim()?.[0] || '?').toUpperCase();
 const telHref = (phone) => `tel:${(phone || '').replace(/[^\d+]/g, '')}`;
@@ -144,6 +141,130 @@ const buildReceiptMessage = (order, receiptUrl) => {
   ];
   return lines.filter((l) => l !== null).join('\n');
 };
+
+const buildBookingMessage = (order) => {
+  const name = order.customer.name && order.customer.name !== 'Walk-in customer' ? ` ${order.customer.name}` : '';
+  const tokens = order.tokens?.length ? order.tokens.join(' · ') : order.queue || order.id;
+  return [
+    `*Magic Track — Booking Confirmation*`,
+    '',
+    `Hi${name}, your service booking has been received.`,
+    '',
+    `Token number${order.tokens?.length === 1 ? '' : 's'}: *${tokens}*`,
+    `Order: #${order.id}`,
+    `Services: ${[serviceLabel(order), ...(order.extras || [])].join(', ')}`,
+    `Vehicle: ${order.vehicle || '—'}${order.numberPlate ? ` (${order.numberPlate})` : ''}`,
+    `Total: ${formatQar(order.total)}`,
+  ].join('\n');
+};
+
+const buildStatusMessage = (order) => {
+  const name = order.customer.name && order.customer.name !== 'Walk-in customer' ? ` ${order.customer.name}` : '';
+  const tokens = order.tokens?.length ? order.tokens.join(' · ') : order.queue || order.id;
+  return [
+    `*Magic Track — Service Status Update*`,
+    '',
+    `Hi${name}, the status of your car service has changed.`,
+    `Token number${order.tokens?.length === 1 ? '' : 's'}: *${tokens}*`,
+    `Current status: *${STAGE_META[order.stage]?.label || order.stage}*`,
+    `Order: #${order.id}`,
+  ].join('\n');
+};
+
+function SendWhatsAppMessageButton({ order, message, label, disabled = false }) {
+  const [error, setError] = useState('');
+  const [openLink, setOpenLink] = useState('');
+  const [opened, setOpened] = useState(false);
+
+  const send = () => {
+    setError('');
+    setOpenLink('');
+    setOpened(false);
+
+    const phone = order.customer.phone;
+    const number = toWhatsAppNumber(phone);
+    if (!phone) {
+      setError('This order has no phone number, so there is no one to notify.');
+      return;
+    }
+    if (!number) {
+      setError(`"${phone}" is not a valid WhatsApp number. Qatar numbers have 8 digits and start with 3, 5, 6 or 7; other countries need their country code.`);
+      return;
+    }
+
+    const link = getWhatsAppUrl(message, number);
+    const tab = window.open('', '_blank');
+    if (tab) {
+      tab.opener = null;
+      tab.location.href = link;
+      setOpened(true);
+    } else {
+      setOpenLink(link);
+    }
+  };
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={send}
+        disabled={disabled}
+        className={`w-full py-2.5 text-[12.5px] font-semibold flex items-center justify-center gap-1.5 transition-colors disabled:opacity-70 ${TONE.green}`}
+      >
+        <MessageCircle className="w-4 h-4" aria-hidden="true" /> {label}
+      </button>
+      {error ? (
+        <div className="mt-2 p-2.5 bg-red-50 border border-red-200 text-[11.5px] text-red-700 flex gap-1.5" role="alert">
+          <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-px" aria-hidden="true" /> {error}
+        </div>
+      ) : openLink ? (
+        <a
+          href={openLink}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-2 block text-center p-2.5 bg-green-50 border border-green-200 text-[12px] font-semibold text-green-700 hover:bg-green-100"
+        >
+          Click here to open WhatsApp
+        </a>
+      ) : opened ? (
+        <p className="text-[10.5px] text-green-700 mt-1.5" role="status">
+          WhatsApp opened with the message — press <b>Send</b> there.
+        </p>
+      ) : (
+        <p className="text-[10px] text-gray-500 mt-1.5">
+          Opens WhatsApp on {order.customer.phone || 'the customer’s number'} with the message ready. Staff must press Send.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function BookingTokenWhatsAppLink({ order }) {
+  const number = toWhatsAppNumber(order.customer.phone);
+  const className = `text-xs font-medium px-2.5 py-1.5 transition-colors ${TONE.green}`;
+
+  if (!number) {
+    return (
+      <span className="text-[11px] text-gray-400" title="This order has no valid WhatsApp number">
+        No WhatsApp
+      </span>
+    );
+  }
+
+  return (
+    <a
+      href={getWhatsAppUrl(buildBookingMessage(order), number)}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={(event) => event.stopPropagation()}
+      className={`inline-flex items-center gap-1 ${className}`}
+      aria-label={`Send token number to ${order.customer.name} on WhatsApp`}
+      title="Open WhatsApp with the booking token ready to send"
+    >
+      <MessageCircle className="w-3.5 h-3.5" aria-hidden="true" /> Send token
+    </a>
+  );
+}
 
 /**
  * "Send Receipt on WhatsApp": makes the receipt PDF, stores it on the server and
@@ -248,12 +369,94 @@ function StatusPill({ status }) {
   );
 }
 
+function EditableOrderTotal({ order, busy, onSave }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(String(order.total));
+  const [error, setError] = useState('');
+
+  const save = async (event) => {
+    event.stopPropagation();
+    const amount = Number(value);
+    if (!value.trim() || !Number.isFinite(amount) || amount < 0 || !/^\d+(?:\.\d{1,2})?$/.test(value.trim())) {
+      setError('Enter an amount of 0 or more with up to 2 decimal places.');
+      return;
+    }
+
+    setError('');
+    const saved = await onSave(order, 'total', Math.round(amount * 100) / 100, 'final price');
+    if (saved) setEditing(false);
+  };
+
+  if (!editing) {
+    return (
+      <div className="flex items-center gap-2 whitespace-nowrap">
+        <span className="text-sm font-semibold text-gray-900">{formatQar(order.total)}</span>
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            setValue(String(order.total));
+            setError('');
+            setEditing(true);
+          }}
+          disabled={busy}
+          className="text-xs font-medium text-[var(--primary)] hover:underline disabled:opacity-50"
+          aria-label={`Edit final price for order ${order.id}`}
+        >
+          Edit
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div onClick={(event) => event.stopPropagation()} className="flex flex-wrap items-center gap-1.5">
+      <input
+        type="number"
+        min="0"
+        step="0.01"
+        value={value}
+        onChange={(event) => { setValue(event.target.value); setError(''); }}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') save(event);
+          if (event.key === 'Escape') { setEditing(false); setError(''); }
+        }}
+        disabled={busy}
+        aria-label={`Final price for order ${order.id}`}
+        aria-describedby={error ? `order-price-error-${order.id}` : undefined}
+        className="w-24 px-2 py-1 text-sm border border-gray-300"
+        autoFocus
+      />
+      <button
+        type="button"
+        onClick={save}
+        disabled={busy}
+        className="text-xs font-semibold text-green-700 hover:underline disabled:opacity-50"
+      >
+        {busy ? 'Saving…' : 'Save'}
+      </button>
+      <button
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation();
+          setEditing(false);
+          setError('');
+        }}
+        disabled={busy}
+        className="text-xs text-gray-500 hover:underline disabled:opacity-50"
+      >
+        Cancel
+      </button>
+      {error && <span id={`order-price-error-${order.id}`} className="w-full text-[10px] text-red-600" role="alert">{error}</span>}
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────
 // Order detail drawer
 // ─────────────────────────────────────────────────────────────
 function OrderDrawer({
-  order, onClose, onTogglePaid, onChangeStage, onCopyMessage, canDelete, onDelete,
-  canRequestDelete, canReview, onRequestDelete, onReject, busy,
+  order, onClose, onTogglePaid, onChangeStage, onCopyMessage, canDelete, onDelete, busy,
 }) {
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
@@ -270,6 +473,7 @@ function OrderDrawer({
   const isPaid = order.status === 'paid';
   const kv = [
     ...(order.source === 'kiosk' ? [['Placed from', `Kiosk · Queue ${order.queue}`]] : []),
+    ['Token number', order.tokens?.join(' · ') || order.queue || '—'],
     ['Service', serviceLabel(order)],
     ['Vehicle', order.vehicle],
     [OTHER_SERVICES_TITLE, order.extras?.length ? order.extras.join(', ') : '—'],
@@ -376,6 +580,21 @@ function OrderDrawer({
             ))}
           </div>
 
+          <div className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold mt-4 mb-2">Customer WhatsApp</div>
+          <div className="space-y-2">
+            <SendWhatsAppMessageButton
+              order={order}
+              message={buildBookingMessage(order)}
+              label="Send booking token on WhatsApp"
+            />
+            <SendWhatsAppMessageButton
+              order={order}
+              message={buildStatusMessage(order)}
+              label="Send service status on WhatsApp"
+              disabled={busy}
+            />
+          </div>
+
           {/* Cleaner */}
           <div className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold mt-4 mb-2">Cleaner Assigned</div>
           {order.cleaner ? (
@@ -431,56 +650,13 @@ function OrderDrawer({
               : 'No cleaner assigned — WhatsApp will ask who to send it to.'}
           </p>
 
-          {order.deleteRequest && (
-            <div className="mt-5 p-3 bg-red-50 border border-red-200 text-[12px] text-red-800" role="status">
-              <div className="font-semibold flex items-center gap-1.5">
-                <ShieldAlert className="w-3.5 h-3.5" aria-hidden="true" />
-                Delete requested{order.deleteRequest.by ? ` by ${order.deleteRequest.by}` : ''}
-                {order.deleteRequest.at && <span className="font-normal text-red-700/80">· {requestWhen(order.deleteRequest.at)}</span>}
-              </div>
-              {order.deleteRequest.reason && <p className="mt-1">“{order.deleteRequest.reason}”</p>}
-              {canReview ? (
-                <div className="grid grid-cols-2 gap-2 mt-2.5">
-                  <button
-                    type="button"
-                    onClick={() => onDelete([order])}
-                    disabled={busy}
-                    className="py-2 text-[12px] font-semibold flex items-center justify-center gap-1.5 bg-red-600 text-white hover:bg-red-700 disabled:opacity-60"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" aria-hidden="true" /> Approve & delete
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onReject(order)}
-                    disabled={busy}
-                    className={`py-2 text-[12px] font-semibold transition-colors disabled:opacity-60 ${TONE.ghost}`}
-                  >
-                    Keep order
-                  </button>
-                </div>
-              ) : (
-                <p className="mt-1 text-red-700/80">Waiting for the Super Admin to approve.</p>
-              )}
-            </div>
-          )}
-
-          {canDelete && !order.deleteRequest && (
+          {canDelete && (
             <button
               type="button"
               onClick={() => onDelete([order])}
               className="w-full mt-5 py-2 text-[12px] font-semibold flex items-center justify-center gap-1.5 text-red-600 border border-red-200 hover:bg-red-50 transition-colors"
             >
               <Trash2 className="w-3.5 h-3.5" aria-hidden="true" /> Delete Order
-            </button>
-          )}
-
-          {!canDelete && canRequestDelete && !order.deleteRequest && (
-            <button
-              type="button"
-              onClick={() => onRequestDelete([order])}
-              className="w-full mt-5 py-2 text-[12px] font-semibold flex items-center justify-center gap-1.5 text-red-600 border border-red-200 hover:bg-red-50 transition-colors"
-            >
-              <ShieldAlert className="w-3.5 h-3.5" aria-hidden="true" /> Request Delete
             </button>
           )}
         </div>
@@ -542,17 +718,19 @@ export default function OrdersPage() {
   const [appointments, setAppointments] = useState([]);
   const [showAppointment, setShowAppointment] = useState(false);
   const [pendingCancel, setPendingCancel] = useState(null); // appointment awaiting confirmation
-  const [pendingRequest, setPendingRequest] = useState(null); // orders an Admin asks to delete
-  const { hasPermission, user } = useAuth();
-  const canDelete = hasPermission('canDeleteRecords');
-  const canRequestDelete = hasPermission('canRequestDelete');
-  const canReview = hasPermission('canReviewDeleteRequests');
+  const [deletedHistory, setDeletedHistory] = useState([]);
+  const [deletedHistoryLoading, setDeletedHistoryLoading] = useState(false);
+  const [deletedHistoryError, setDeletedHistoryError] = useState('');
+  const { hasPermission } = useAuth();
+  const canDelete = hasPermission('canDeleteBookings');
+  const canViewDeletionHistory = hasPermission('canManageUsers');
   const canCreate = hasPermission('canManageBookings');
 
   const toggleSidebar = useCallback(() => setSidebarOpen((v) => !v), []);
   const closeNewOrder = useCallback(() => setShowNewOrder(false), []);
   const closeAppointment = useCallback(() => setShowAppointment(false), []);
   const isAppointmentsTab = activeTab === 'appointments';
+  const isDeletionHistoryTab = activeTab === 'deleted';
 
   const setBusy = useCallback((id, on) => {
     setBusyIds((prev) => {
@@ -613,19 +791,16 @@ export default function OrdersPage() {
   }, [loadData]);
 
   const counts = useMemo(() => {
-    const c = { all: orders.length, appointments: appointments.length };
+    const c = { all: orders.length, appointments: appointments.length, deleted: deletedHistory.length };
     for (const s of STATUSES) c[s] = 0;
     for (const o of orders) c[o.status] = (c[o.status] || 0) + 1;
-    c.requests = orders.filter((o) => o.deleteRequest).length;
     return c;
-  }, [orders, appointments]);
+  }, [orders, appointments, deletedHistory]);
 
   const visibleOrders = useMemo(() => {
     const q = query.trim().toLowerCase();
     return orders.filter((o) => {
-      if (activeTab === 'requests') {
-        if (!o.deleteRequest) return false;
-      } else if (activeTab !== 'all' && o.status !== activeTab) return false;
+      if (activeTab !== 'all' && o.status !== activeTab) return false;
       if (!q) return true;
       return [
         o.id, o.customer.name, o.customer.phone, serviceLabel(o), o.vehicle,
@@ -633,6 +808,38 @@ export default function OrdersPage() {
       ].some((v) => (v || '').toLowerCase().includes(q));
     });
   }, [orders, activeTab, query]);
+
+  const visibleDeletionHistory = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return deletedHistory;
+    return deletedHistory.filter((entry) => [
+      entry.booking_id,
+      entry.old_values?.booking_number,
+      entry.old_values?.passenger_name,
+      entry.old_values?.Service,
+      entry.old_values?.package,
+      entry.actor_name,
+      entry.actor_role,
+    ].some((value) => String(value || '').toLowerCase().includes(q)));
+  }, [deletedHistory, query]);
+
+  const loadDeletedHistory = useCallback(async () => {
+    setDeletedHistoryLoading(true);
+    setDeletedHistoryError('');
+    try {
+      const result = await fetchDeletedBookingHistory();
+      setDeletedHistory(result.results);
+    } catch (error) {
+      console.error('Error loading deleted booking history:', error);
+      setDeletedHistoryError(error.message || 'Could not load deletion history.');
+    } finally {
+      setDeletedHistoryLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isDeletionHistoryTab && canViewDeletionHistory) loadDeletedHistory();
+  }, [isDeletionHistoryTab, canViewDeletionHistory, loadDeletedHistory]);
 
   // Page of the table. It goes back to page 1 whenever the tab or search
   // changes (kept with its tab + search, so no effect is needed).
@@ -751,9 +958,11 @@ export default function OrdersPage() {
     const previous = order[field];
     setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, [field]: value } : o)));
     setBusy(order.id, true);
+    let saved = false;
     try {
       await saveOrderField(order, field, value);
-      setToast({ message: `#${order.id} ${label}: ${value}`, type: 'success' });
+      setToast({ message: `#${order.id} ${label}: ${field === 'total' ? formatQar(value) : value}`, type: 'success' });
+      saved = true;
     } catch (error) {
       console.error(`Error updating ${field} for #${order.id}:`, error);
       setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, [field]: previous } : o)));
@@ -761,6 +970,7 @@ export default function OrdersPage() {
     } finally {
       setBusy(order.id, false);
     }
+    return saved;
   }, [setBusy]);
 
   // Future appointment (saved as a booking with Service = 'appointment').
@@ -787,44 +997,6 @@ export default function OrdersPage() {
     }
   }, [pendingCancel]);
 
-  // Admin: delete request. Nothing is removed until a Super Admin approves.
-  const handleRequestDelete = useCallback(async (reason) => {
-    const list = pendingRequest || [];
-    const by = user?.username || user?.email || 'Admin';
-    const sent = new Map();
-    let lastError = null;
-    for (const order of list) {
-      try {
-        sent.set(order.id, await requestOrderDelete(order, reason, by));
-      } catch (error) {
-        console.error(`Error requesting delete for #${order.id}:`, error);
-        lastError = error;
-      }
-    }
-    if (sent.size === 0 && lastError) throw lastError; // the dialog shows why
-    setOrders((prev) => prev.map((o) => (sent.has(o.id) ? { ...o, deleteRequest: sent.get(o.id) } : o)));
-    setCheckedIds(new Set());
-    setPendingRequest(null);
-    setToast(lastError
-      ? { message: `${sent.size} of ${list.length} requests sent: ${lastError.message || 'server error'}`, type: 'error' }
-      : { message: `Delete request sent to the Super Admin for ${sent.size === 1 ? `#${list[0].id}` : `${sent.size} orders`}`, type: 'success' });
-  }, [pendingRequest, user]);
-
-  // Super Admin: keep the order (approving = the normal delete).
-  const rejectRequest = useCallback(async (order) => {
-    setBusy(order.id, true);
-    try {
-      await rejectDeleteRequest(order);
-      setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, deleteRequest: null } : o)));
-      setToast({ message: `#${order.id} kept — delete request rejected`, type: 'success' });
-    } catch (error) {
-      console.error(`Error rejecting delete request for #${order.id}:`, error);
-      setToast({ message: `Could not reject the request: ${error.message || 'server error'}`, type: 'error' });
-    } finally {
-      setBusy(order.id, false);
-    }
-  }, [setBusy]);
-
   // Wash stage: shown at once (and on the queue screen after its next refresh), undone if the save fails.
   const changeStage = useCallback(async (order, stage) => {
     if (busyIds.has(order.id) || order.stage === stage) return;
@@ -832,7 +1004,8 @@ export default function OrdersPage() {
     setBusy(order.id, true);
     try {
       await setOrderStage(order, stage);
-      setToast({ message: `${order.queue} is now ${STAGE_META[stage].label}`, type: 'success' });
+      setSelectedId(order.id);
+      setToast({ message: `${order.queue} is now ${STAGE_META[stage].label} — open WhatsApp in the order details to notify the customer`, type: 'success' });
     } catch (error) {
       console.error(`Error updating stage for #${order.id}:`, error);
       setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, stage: order.stage } : o)));
@@ -928,7 +1101,7 @@ export default function OrdersPage() {
 
               {/* Tabs */}
               <div className="flex gap-2 px-5 pt-4 pb-1 overflow-x-auto">
-                {TABS.filter((tab) => tab.key !== 'requests' || counts.requests > 0 || activeTab === 'requests').map((tab) => {
+                {TABS.filter((tab) => tab.key !== 'deleted' || canViewDeletionHistory).map((tab) => {
                   const active = activeTab === tab.key;
                   return (
                     <button
@@ -946,16 +1119,6 @@ export default function OrdersPage() {
                   );
                 })}
               </div>
-
-              {canReview && counts.requests > 0 && activeTab !== 'requests' && (
-                <div className="mx-5 mt-3 px-3 py-2 flex flex-wrap items-center gap-2 text-sm bg-red-50 border border-red-200 text-red-800" role="status">
-                  <ShieldAlert className="w-4 h-4 shrink-0" aria-hidden="true" />
-                  <span className="mr-auto">
-                    <b>{counts.requests}</b> delete request{counts.requests === 1 ? '' : 's'} from Admins waiting for you
-                  </span>
-                  <button onClick={() => setActiveTab('requests')} className="text-xs font-semibold underline">Review</button>
-                </div>
-              )}
 
               {/* Bulk actions */}
               {!isAppointmentsTab && checkedOrders.length > 0 && (
@@ -981,15 +1144,6 @@ export default function OrdersPage() {
                       <Trash2 className="w-3.5 h-3.5" aria-hidden="true" /> Delete
                     </button>
                   )}
-                  {!canDelete && canRequestDelete && (
-                    <button
-                      onClick={() => setPendingRequest(checkedOrders.filter((o) => !o.deleteRequest))}
-                      disabled={checkedOrders.every((o) => o.deleteRequest)}
-                      className="text-xs font-medium px-3 py-1.5 flex items-center gap-1.5 text-red-600 bg-white border border-red-200 hover:bg-red-50 disabled:opacity-50"
-                    >
-                      <ShieldAlert className="w-3.5 h-3.5" aria-hidden="true" /> Request Delete
-                    </button>
-                  )}
                   <button
                     onClick={() => setCheckedIds(new Set())}
                     className="text-xs text-gray-500 hover:text-gray-800 px-2"
@@ -1009,7 +1163,75 @@ export default function OrdersPage() {
 
               {/* Table */}
               <div className="p-4 sm:p-5">
-                {isAppointmentsTab ? (
+                {isDeletionHistoryTab ? (
+                  <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                    <div className="flex items-center justify-between gap-3 px-4 py-3 bg-gray-50 border-b border-gray-200">
+                      <p className="text-xs text-gray-600">
+                        Most recent {deletedHistory.length} booking deletions. The log records who deleted each order and when.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={loadDeletedHistory}
+                        disabled={deletedHistoryLoading}
+                        className={`text-xs font-medium px-3 py-1.5 disabled:opacity-60 ${TONE.ghost}`}
+                      >
+                        {deletedHistoryLoading ? 'Loading…' : 'Refresh'}
+                      </button>
+                    </div>
+                    {deletedHistoryError ? (
+                      <div className="p-5 text-sm text-red-700" role="alert">
+                        {deletedHistoryError}
+                      </div>
+                    ) : (
+                      <table className="w-full border-collapse min-w-[760px]">
+                        <thead>
+                          <tr>
+                            {['Order', 'Customer', 'Service', 'Final price', 'Deleted by', 'Deleted at'].map((heading) => (
+                              <th key={heading} className="text-left text-[10px] uppercase tracking-wide text-gray-500 font-semibold bg-white px-3.5 py-2.5 border-b border-gray-200 whitespace-nowrap">
+                                {heading}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {visibleDeletionHistory.map((entry) => {
+                            const deleted = entry.old_values || {};
+                            const deletedAt = entry.created_at ? new Date(entry.created_at) : null;
+                            return (
+                              <tr key={entry.id} className="border-b border-gray-100 last:border-0">
+                                <td className="px-3.5 py-3 text-sm font-semibold text-gray-900 whitespace-nowrap">
+                                  #{deleted.booking_number || entry.booking_id}
+                                </td>
+                                <td className="px-3.5 py-3 text-sm text-gray-700">
+                                  {deleted.passenger_name || '—'}
+                                </td>
+                                <td className="px-3.5 py-3 text-sm text-gray-700">
+                                  {[deleted.Service, deleted.package].filter(Boolean).join(' · ') || '—'}
+                                </td>
+                                <td className="px-3.5 py-3 text-sm text-gray-700 whitespace-nowrap">
+                                  {deleted.price != null && deleted.price !== '' ? formatQar(deleted.price) : '—'}
+                                </td>
+                                <td className="px-3.5 py-3 text-sm text-gray-700 whitespace-nowrap">
+                                  {[entry.actor_name, entry.actor_role].filter(Boolean).join(' · ') || '—'}
+                                </td>
+                                <td className="px-3.5 py-3 text-sm text-gray-700 whitespace-nowrap">
+                                  {deletedAt && !Number.isNaN(deletedAt.getTime()) ? deletedAt.toLocaleString() : entry.created_at || '—'}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                          {!deletedHistoryLoading && visibleDeletionHistory.length === 0 && (
+                            <tr>
+                              <td colSpan={6} className="px-4 py-10 text-center text-sm text-gray-500">
+                                {deletedHistory.length ? 'No deletions match your search.' : 'No booking deletions recorded yet.'}
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                ) : isAppointmentsTab ? (
                   <div className="overflow-x-auto border border-gray-200 rounded-lg">
                     <table className="w-full border-collapse min-w-[860px]">
                       <thead>
@@ -1121,19 +1343,6 @@ export default function OrdersPage() {
                                 Kiosk · {o.queue}
                               </span>
                             )}
-                            {o.deleteRequest && (
-                              <span
-                                className="block mt-1 w-fit px-2 py-0.5 rounded-full text-[10px] font-semibold bg-red-100 text-red-700"
-                                title={[o.deleteRequest.by, o.deleteRequest.reason].filter(Boolean).join(': ')}
-                              >
-                                Delete requested
-                              </span>
-                            )}
-                            {activeTab === 'requests' && o.deleteRequest?.reason && (
-                              <span className="block mt-1 max-w-[220px] whitespace-normal text-[11px] font-normal text-gray-500">
-                                “{o.deleteRequest.reason}”{o.deleteRequest.by ? ` — ${o.deleteRequest.by}` : ''}
-                              </span>
-                            )}
                           </td>
                           <td className="px-3.5 py-3">
                             <div className="text-sm font-medium text-gray-900 whitespace-nowrap">{o.customer.name}</div>
@@ -1189,47 +1398,35 @@ export default function OrdersPage() {
                               {PAYMENT_TYPES.map((p) => <option key={p}>{p}</option>)}
                             </select>
                           </td>
-                          <td className="px-3.5 py-3 text-sm font-semibold text-gray-900 whitespace-nowrap">{formatQar(o.total)}</td>
+                          <td className="px-3.5 py-3" onClick={(e) => e.stopPropagation()}>
+                            <EditableOrderTotal
+                              order={o}
+                              busy={busyIds.has(o.id)}
+                              onSave={updateOrderField}
+                            />
+                          </td>
                           <td className="px-3.5 py-3 text-sm text-gray-700 whitespace-nowrap">{o.time}</td>
                           <td className="px-3.5 py-3"><StatusPill status={o.status} /></td>
                           <td className="px-3.5 py-3 text-right whitespace-nowrap">
-                            {activeTab === 'requests' && o.deleteRequest ? (
-                              canReview ? (
-                                <span className="inline-flex gap-1.5">
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); setPendingDelete([o]); }}
-                                    disabled={busyIds.has(o.id)}
-                                    className="text-xs font-medium px-3 py-1.5 bg-red-600 text-white hover:bg-red-700 disabled:opacity-60"
-                                  >
-                                    Approve
-                                  </button>
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); rejectRequest(o); }}
-                                    disabled={busyIds.has(o.id)}
-                                    className={`text-xs font-medium px-3 py-1.5 transition-colors disabled:opacity-60 ${TONE.ghost}`}
-                                  >
-                                    Keep
-                                  </button>
-                                </span>
+                            <div className="inline-flex items-center gap-1.5">
+                              <BookingTokenWhatsAppLink order={o} />
+                              {o.status === 'unpaid' ? (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); togglePaid(o); }}
+                                  disabled={busyIds.has(o.id)}
+                                  className={`text-xs font-medium px-3 py-1.5 transition-colors disabled:opacity-60 ${TONE.green}`}
+                                >
+                                  {busyIds.has(o.id) ? 'Saving…' : 'Mark Paid'}
+                                </button>
                               ) : (
-                                <span className="text-xs text-gray-500">Waiting for Super Admin</span>
-                              )
-                            ) : o.status === 'unpaid' ? (
-                              <button
-                                onClick={(e) => { e.stopPropagation(); togglePaid(o); }}
-                                disabled={busyIds.has(o.id)}
-                                className={`text-xs font-medium px-3 py-1.5 transition-colors disabled:opacity-60 ${TONE.green}`}
-                              >
-                                {busyIds.has(o.id) ? 'Saving…' : 'Mark Paid'}
-                              </button>
-                            ) : (
-                              <button
-                                onClick={(e) => { e.stopPropagation(); setSelectedId(o.id); }}
-                                className={`text-xs font-medium px-3 py-1.5 transition-colors ${TONE.ghost}`}
-                              >
-                                View
-                              </button>
-                            )}
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); setSelectedId(o.id); }}
+                                  className={`text-xs font-medium px-3 py-1.5 transition-colors ${TONE.ghost}`}
+                                >
+                                  View
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -1295,7 +1492,9 @@ export default function OrdersPage() {
                   <Clock className="w-3.5 h-3.5" aria-hidden="true" />
                   {isAppointmentsTab
                     ? 'Future appointments, soonest first · use Take Appointment to book one'
-                    : `Tap a row to open the order · move each car Waiting → Washing → Ready → Collected (customers see it on the queue screen) · Mark Paid when the customer pays${canDelete ? ' · tick orders to send or delete them' : canRequestDelete ? ' · tick orders to send them or request a delete' : ''}`}
+                    : isDeletionHistoryTab
+                    ? 'Deletion history is visible to the Super Admin and records the deleted order, staff member, and time'
+                    : `Tap a row to open the order · move each car Waiting → Washing → Ready → Collected (customers see it on the queue screen) · Mark Paid when the customer pays${canDelete ? ' · tick orders to send or delete them' : ''}`}
                 </div>
               </div>
             </div>
@@ -1312,16 +1511,8 @@ export default function OrdersPage() {
           onCopyMessage={handleCopyMessage}
           canDelete={canDelete}
           onDelete={setPendingDelete}
-          canRequestDelete={canRequestDelete}
-          canReview={canReview}
-          onRequestDelete={setPendingRequest}
-          onReject={rejectRequest}
           busy={busyIds.has(selectedOrder.id)}
         />
-      )}
-
-      {pendingRequest?.length > 0 && (
-        <DeleteRequestModal orders={pendingRequest} onClose={() => setPendingRequest(null)} onSubmit={handleRequestDelete} />
       )}
 
       {showNewOrder && (
@@ -1353,8 +1544,8 @@ export default function OrdersPage() {
         title={pendingDelete?.length > 1 ? `Delete ${pendingDelete.length} orders?` : 'Delete order?'}
         message={
           pendingDelete?.length > 1
-            ? `This permanently removes ${pendingDelete.length} orders (${pendingDelete.map((o) => `#${o.id}`).join(', ')}). This cannot be undone.`
-            : `This permanently removes order #${pendingDelete?.[0]?.id}. This cannot be undone.`
+            ? `Delete ${pendingDelete.length} orders (${pendingDelete.map((o) => `#${o.id}`).join(', ')}) now? The Super Admin can review the deletion history.`
+            : `Delete order #${pendingDelete?.[0]?.id} now? The Super Admin can review the deletion history.`
         }
         confirmText="Delete"
       />

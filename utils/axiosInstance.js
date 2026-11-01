@@ -238,3 +238,8 @@ export const bookingService = {
     uploadReceipt: (id, body, config = {}) =>
         api.post(API_PATHS.BOOKING.UPLOAD_RECEIPT(id), body, config),
 };
+
+export const activityLogService = {
+    getAll: (params) =>
+        api.get(API_PATHS.ACTIVITY_LOG.GET_ALL, { params }),
+};

@@ -33,24 +33,23 @@ Please whitelist the allowed fields in `create booking` and `update booking`, an
 
 | Endpoint | Today | Should be |
 |---|---|---|
-| `POST /api/v1/booking/all-bookings` | Works **without a token** | Admin / Manager token only |
+| `POST /api/v1/booking/all-bookings` | Protected | Admin / Manager token required |
 | `GET /api/v1/booking/one-booking-details/:id` | Please check | Admin / Manager token only |
 | `POST /api/v1/booking/update-status` | Please check | Admin / Manager token only |
 | `PUT /api/v1/booking/update-booking/:id` | Please check | Admin / Manager token only |
-| `PUT /api/v1/booking/delete-booking/:id` | Please check | Admin token only |
+| `PUT /api/v1/booking/delete-booking/:id` | Admin / Manager token | Admin / Manager delete directly; no approval |
 | `POST /api/v1/booking/booking` | Works without a token | Can stay public. The kiosk needs it. Please add rate limiting. |
 
-Right now anyone with the URL can list every customer's name, phone number and order.
+The all-bookings endpoint requires a staff token; booking deletion is audited for Super Admin review.
 
 ## 4. Manager account
 
-Only an `admin` account exists (`role: "admin"`). The dashboard supports **Admin** and **Manager** (a Manager cannot delete orders). Please create:
-- a role named `manager`
-- at least one manager login (username + password) for the client
+The dashboard maps the backend's `admin` and `manager` roles to its **Admin** role; both can delete bookings directly. The Super Admin retains access to the deletion audit history.
+- Maintain the `manager` role and a manager login for the client.
 
 ## 5. Postman collection fixes
 
-- **Delete Booking** points to `PUT /api/v1/identity/update-profile` by mistake. The real route, which works, is `PUT /api/v1/booking/delete-booking/:id`.
+- **Delete Booking** uses `PUT /api/v1/booking/delete-booking/:id`; admin/manager deletions are direct and appear in the Super Admin activity log.
 - The `baseURL` / `base_url` variables are empty. Please set them to `https://api-magic.milesahead.services`.
 - The collection is identical to the Miles Ahead one. Please add any Magic Track-specific endpoints when you create them.
 
@@ -124,34 +123,30 @@ The queue screen (`/queue`) runs on a 43" portrait display in the waiting area. 
 
 ---
 
-## 9. Super Admin / Admin logins and delete requests (new, 18 Oct 2026)
+## 9. Super Admin / Admin logins and deletion history (updated, 1 Nov 2026)
 
 The client wants two kinds of dashboard login:
-- **Super Admin** sees and changes everything, can delete, and approves delete requests.
-- **Admin** enters and updates orders, but **cannot delete**. Instead an Admin sends a **delete request** with a reason, and the Super Admin approves it (the order is deleted) or keeps the order.
+- **Super Admin** sees and changes everything, including a history of deleted orders.
+- **Admin** enters, updates and deletes orders directly. Deletion approval is removed to avoid slowing down staff.
 
 **Roles and accounts**
 - Please add a role **`super_admin`** and give it to the owner's account.
 - Staff accounts get the role **`admin`**.
 - The frontend reads `user.role` from `POST /api/v1/identity/login`.
-- Until this exists, the frontend treats today's `admin` account as the Super Admin and `manager` accounts as Admins. When the roles are live, we switch one flag (`BACKEND_HAS_SUPER_ADMIN_ROLE` in `app/contexts/AuthContext.js`).
+- The frontend recognizes `super_admin` as Super Admin and `admin` / `manager` as Admin.
 - Please also send us the logins you create for the client (one Super Admin, and Admins as needed).
 
 **Enforce it on the server.** Hiding buttons in the dashboard isn't security:
 
 | Route | Allowed |
 |---|---|
-| `PUT /api/v1/booking/delete-booking/:id` | **super_admin only** |
+| `PUT /api/v1/booking/delete-booking/:id` | super_admin, admin and manager (no approval) |
 | `PUT /api/v1/screen-ads/delete/:id` | super_admin only |
-| Create / update bookings, update-status, all-bookings, screen-ads add/update | super_admin and admin |
+| Create / update bookings, update-status, all-bookings, screen-ads add/update | super_admin, admin and manager |
 
-**New columns on `bookings` for delete requests.** The frontend sends these with `PUT /api/v1/booking/update-booking/:id`:
-
-| Column | Type | Example |
-|---|---|---|
-| `delete_requested` | TINYINT(1), default 0 | `1` = waiting for the Super Admin, `0` = none or rejected |
-| `delete_reason` | VARCHAR(255), nullable | "Entered twice by mistake" |
-| `delete_requested_by` | VARCHAR(100), nullable | Username of the Admin |
-| `delete_requested_at` | DATETIME, nullable | `2026-10-18 14:05:00` |
-
-**Recommended, so the Super Admin always knows who did what:** an audit log table (`activity_log`: who, action, booking id, old/new values, time), written by the server on every create, update, status change, delete request and delete, plus a `GET` route to read it. With that, we can add an **Activity Log** page for the Super Admin.
+On successful booking deletion, write an `activity_log` entry containing the booking
+number, customer, service, price, acting staff member, role and timestamp. The
+Super Admin can review deleted bookings from the dashboard's **Deletion history**
+tab; the underlying `GET /api/v1/activity-log?action=booking.delete` endpoint must
+remain restricted to the Super Admin. Existing delete-request columns can remain
+in the database for compatibility, but the dashboard no longer uses approval requests.

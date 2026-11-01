@@ -99,4 +99,8 @@ export const API_PATHS = {
         // Receipt PDF for the customer's WhatsApp message; returns { url }.
         UPLOAD_RECEIPT: (bookingId) => `/api/v1/booking/receipt/${bookingId}`,
     },
+
+    ACTIVITY_LOG: {
+        GET_ALL: "/api/v1/activity-log",
+    },
 };
