@@ -41,3 +41,7 @@ yarn-error.log*
 next-env.d.ts
 
 .early.coverage
+# Local reference files (contain passwords / client documents) — never push
+MagicTrack API.postman_collection.json
+Revisions.docx
+wash-kiosk (1).html
