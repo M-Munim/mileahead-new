@@ -141,13 +141,11 @@ export default function NewOrderModal({ onClose, onSubmit }) {
     if (!values.customerName) next.customerName = 'Customer name is required';
     if (!values.phone) next.phone = 'Phone number is required';
     else if (values.phone.replace(/\D/g, '').length < 7) next.phone = 'Enter a valid phone number';
-    if (values.services.length === 0 && values.extras.length === 0) next.service = 'Choose a service or at least one other service';
-    if (!values.vehicle) next.vehicle = 'Vehicle type is required';
-    if (!values.date) next.date = 'Date is required';
-    if (!values.time) next.time = 'Time is required';
+    if (values.services.length === 0) next.service = 'Choose at least one service';
+    if (!values.numberPlate) next.numberPlate = 'Number plate is required';
+    // Client rule (Nov 2026): everything else is optional. A coupon still needs its serial.
     if (values.discount === 'Coupon' && !values.couponSerial) next.couponSerial = 'Coupon serial number is required';
-    if (!values.paymentMethod) next.paymentMethod = 'Payment method is required';
-    if (totalValue === '' || !Number.isFinite(Number(totalValue)) || Number(totalValue) < 0) {
+    if (totalValue !== '' && (!Number.isFinite(Number(totalValue)) || Number(totalValue) < 0)) {
       next.total = 'Enter a valid total of 0 or more';
     }
     return next;
@@ -167,7 +165,15 @@ export default function NewOrderModal({ onClose, onSubmit }) {
     setSaving(true);
     setSubmitError('');
     try {
-      await onSubmit({ ...values, subtotal, total: Number(totalValue) });
+      // Date and time are optional now: an emptied field means "now".
+      const now = nowLocal();
+      await onSubmit({
+        ...values,
+        date: values.date || now.date,
+        time: values.time || now.time,
+        subtotal,
+        total: Number(totalValue || 0),
+      });
     } catch (err) {
       console.error('Create car wash order error', err);
       setSubmitError(err?.message || 'Could not create the order. Please try again.');
@@ -223,7 +229,7 @@ export default function NewOrderModal({ onClose, onSubmit }) {
             {/* Service */}
             <SectionHeader icon={Droplets} title="Service" />
             <fieldset className="md:col-span-2" aria-describedby={errors.service ? 'new-order-service-error' : 'new-order-service-hint'}>
-              <legend className="block text-[13px] font-medium text-gray-700 mb-1.5">Services</legend>
+              <legend className="block text-[13px] font-medium text-gray-700 mb-1.5">Services<Required /></legend>
               {SERVICE_GROUPS.map((group) => (
                 <div key={group.key} className="mb-2 last:mb-0">
                   <div className="text-[11px] font-semibold text-gray-500 mb-1">{group.title}</div>
@@ -262,12 +268,12 @@ export default function NewOrderModal({ onClose, onSubmit }) {
               <FieldError id="new-order-service-error" message={errors.service} />
               {!errors.service && (
                 <p id="new-order-service-hint" className="mt-1 text-[11px] text-gray-500">
-                  Tick one or more. Leave empty if the customer only wants other services.
+                  Tick one or more.
                 </p>
               )}
             </fieldset>
             <div>
-              <label htmlFor="new-order-vehicle">Vehicle Type<Required /></label>
+              <label htmlFor="new-order-vehicle">Vehicle Type <span className="text-gray-400 font-normal">(optional)</span></label>
               <select {...fieldProps('vehicle')}>
                 <option value="">Select vehicle type</option>
                 {vehicleOptions.map((v) => {
@@ -280,8 +286,9 @@ export default function NewOrderModal({ onClose, onSubmit }) {
               <FieldError id="new-order-vehicle-error" message={errors.vehicle} />
             </div>
             <div>
-              <label htmlFor="new-order-numberPlate">Number Plate</label>
+              <label htmlFor="new-order-numberPlate">Number Plate<Required /></label>
               <input {...fieldProps('numberPlate')} placeholder="e.g. 123456" autoComplete="off" />
+              <FieldError id="new-order-numberPlate-error" message={errors.numberPlate} />
             </div>
             <div className="md:col-span-2">
               <span className="block text-[13px] font-medium text-gray-700 mb-1.5">{OTHER_SERVICES_TITLE}</span>
@@ -314,12 +321,12 @@ export default function NewOrderModal({ onClose, onSubmit }) {
             {/* Date & time */}
             <SectionHeader icon={Clock} title="Date & Time" />
             <div>
-              <label htmlFor="new-order-date">Date<Required /></label>
+              <label htmlFor="new-order-date">Date</label>
               <input {...fieldProps('date')} type="date" />
               <FieldError id="new-order-date-error" message={errors.date} />
             </div>
             <div>
-              <label htmlFor="new-order-time">Time<Required /></label>
+              <label htmlFor="new-order-time">Time</label>
               <input {...fieldProps('time')} type="time" />
               <FieldError id="new-order-time-error" message={errors.time} />
             </div>
@@ -349,7 +356,7 @@ export default function NewOrderModal({ onClose, onSubmit }) {
             {/* Payment */}
             <SectionHeader icon={CreditCard} title="Payment" />
             <div>
-              <label htmlFor="new-order-paymentMethod">Payment Method<Required /></label>
+              <label htmlFor="new-order-paymentMethod">Payment Method <span className="text-gray-400 font-normal">(optional)</span></label>
               <select {...fieldProps('paymentMethod')}>
                 <option value="">Select payment method</option>
                 {PAYMENT_METHODS.map((p) => <option key={p} value={p}>{p}</option>)}
@@ -394,7 +401,7 @@ export default function NewOrderModal({ onClose, onSubmit }) {
               </div>
             </fieldset>
             <div>
-              <label htmlFor="new-order-total">Total (QAR)<Required /></label>
+              <label htmlFor="new-order-total">Total (QAR)</label>
               <input
                 id="new-order-total"
                 name="total"

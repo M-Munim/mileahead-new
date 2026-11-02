@@ -106,6 +106,8 @@ const AR = {
   'Enter a valid mobile number': 'أدخل رقم جوال صحيح',
   'Still needed:': 'مطلوب أيضاً:', 'Choose a service': 'اختر خدمة', 'Choose your car type': 'اختر نوع السيارة',
   'Choose a service or another service': 'اختر خدمة أو خدمة أخرى',
+  'Optional — skip if you are not sure. Our staff will confirm the price.': 'اختياري — يمكنك التخطي إذا لم تكن متأكداً. سيؤكد الموظفون السعر.',
+  'Price confirmed at the counter': 'يتم تأكيد السعر عند الكاشير',
   'Choose a service first to see prices.': 'اختر خدمة أولاً لعرض الأسعار.',
   Now: 'الآن', '15 min': '15 دقيقة', '30 min': '30 دقيقة', '45 min': '45 دقيقة', '1 hour': 'ساعة', '2 hours': 'ساعتان',
   // Price list
@@ -193,29 +195,30 @@ export default function KioskPage() {
   const subtotal = useMemo(() => priceFor(s.services, s.vehicle, s.extras), [s.services, s.vehicle, s.extras]);
   const couponOn = couponApplies(s.discount, s.coupon);
   const total = applyDiscount(subtotal, s.discount, s.coupon);
-  const hasSomething = s.services.length > 0 || s.extras.length > 0;
+  const hasService = s.services.length > 0;
   const hasStartingPrice = s.extras.some((n) => EXTRAS.find((e) => e.name === n)?.from);
+  // No car type chosen: the service price isn't known, staff set it at the counter.
+  const priceUnknown = hasService && !s.vehicle;
   const phoneOk = s.phone.replace(/\D/g, '').length >= 7;
 
   // A step is complete when everything it asks for is filled in.
-  // Same rules as the New Order form. The plate stays required here: staff
-  // need it to find the car, and the queue screen shows it.
+  // Client rule (Nov 2026): only the service, name, mobile number and plate
+  // are required — car type, other services and payment are optional.
+  // Same rules as the New Order form.
   const couponMissing = s.discount === 'Coupon' && !s.coupon.trim();
   const stepOk = [
-    hasSomething,
-    s.vehicle !== '',
-    hasSomething,
-    s.name.trim() !== '' && phoneOk && s.plate.trim() !== '' && s.paymentMethod !== '' && !couponMissing,
+    hasService,
+    true,
+    true,
+    s.name.trim() !== '' && phoneOk && s.plate.trim() !== '' && !couponMissing,
   ];
   const firstIncomplete = stepOk.findIndex((ok) => !ok);
   const missing = [
-    !hasSomething && { step: 0, label: 'Choose a service or another service' },
-    !stepOk[1] && { step: 1, label: 'Choose your car type' },
+    !hasService && { step: 0, label: 'Choose a service' },
     !s.name.trim() && { step: 3, label: 'Your name' },
     !phoneOk && { step: 3, label: 'Mobile number' },
     !s.plate.trim() && { step: 3, label: 'Plate number' },
     couponMissing && { step: 3, label: 'Coupon number' },
-    !s.paymentMethod && { step: 3, label: 'Payment method' },
   ].filter(Boolean);
 
   const set = (changes) => setS((prev) => ({ ...prev, ...changes }));
@@ -274,12 +277,16 @@ export default function KioskPage() {
         paymentStatus: 'unpaid',
         subtotal,
         total,
-        notes: [slot.minutes ? `Customer wants to start in ${slot.key}` : '', s.notes.trim()].filter(Boolean).join(' · '),
+        notes: [
+          slot.minutes ? `Customer wants to start in ${slot.key}` : '',
+          priceUnknown ? 'No car type chosen — confirm the price' : '',
+          s.notes.trim(),
+        ].filter(Boolean).join(' · '),
       }, ORDER_SOURCE.KIOSK);
       setSecondsLeft(DONE_RESET_SECONDS);
       setDone({
         queue: created?.queue || '—', tokens: created?.tokens || [], slot: slot.key, services: s.services, extras: s.extras,
-        vehicle: s.vehicle, plate: s.plate.trim(), total,
+        vehicle: s.vehicle, plate: s.plate.trim(), total, priceUnknown,
       });
     } catch (error) {
       console.error('Kiosk order error:', error);
@@ -350,11 +357,11 @@ export default function KioskPage() {
   const whatsAppLink = (order) => {
     const lines = [
       `*Magic Track — ${t('Order')} ${order.queue}*`,
-      `${order.services.length ? order.services.map(t).join(' + ') : t('Other services only')} · ${t(order.vehicle)}`,
+      [order.services.length ? order.services.map(t).join(' + ') : t('Other services only'), order.vehicle && t(order.vehicle)].filter(Boolean).join(' · '),
       order.extras?.length ? `${t('3. Other Services').replace(/^\d+\.\s*/, '')}: ${order.extras.map(t).join(', ')}` : null,
       order.plate ? `${t('Plate')}: ${order.plate}` : null,
       order.slot === 'Now' ? t('Starting now') : `${t('In')} ${t(order.slot)}`,
-      `${t('Total')}: ${qar(order.total)}`,
+      order.priceUnknown ? t('Price confirmed at the counter') : `${t('Total')}: ${qar(order.total)}`,
       // Kept short on purpose: Arabic letters take ~3× the space in a link,
       // and a long link makes the QR code too dense for a phone to read.
     ];
@@ -378,7 +385,7 @@ export default function KioskPage() {
     content = (
       <>
         <h2 className="text-3xl font-bold text-gray-900">{t('Choose your service')}</h2>
-        <p className="text-lg text-gray-500 mt-1 mb-6">{t('Tap one or more services.')} {t('Only want seat covers or floor mats? Skip to step 3.')}</p>
+        <p className="text-lg text-gray-500 mt-1 mb-6">{t('Tap one or more services.')}</p>
         {SERVICE_GROUPS.map((group) => (
           <div key={group.key} className="mb-6">
             <h3 className="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-3">{t(group.title)}</h3>
@@ -409,6 +416,7 @@ export default function KioskPage() {
         <h2 className="text-3xl font-bold text-gray-900">{t('What are you driving?')}</h2>
         <p className="text-lg text-gray-500 mt-1 mb-6">
           {t('Price depends on your car size.')}{s.services.length === 0 && <> {t('Choose a service first to see prices.')}</>}
+          <span className="block text-base mt-1">{t('Optional — skip if you are not sure. Our staff will confirm the price.')}</span>
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
           {vehicleOptions.map((v) => {
@@ -417,7 +425,7 @@ export default function KioskPage() {
               <Tile
                 key={v}
                 selected={s.vehicle === v}
-                onClick={() => set({ vehicle: v })}
+                onClick={() => set({ vehicle: s.vehicle === v ? '' : v })}
                 icon={VEHICLE_ICONS[v] || Car}
                 title={t(v)}
                 subtitle={s.services.length === 1 ? t(s.services[0]) : s.services.length > 1 ? `${s.services.length} ${t('services')}` : ''}
@@ -530,8 +538,8 @@ export default function KioskPage() {
 
         <div className="mt-7">
           <h3 className="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-3">{t('Payment')}</h3>
-          <span className="block text-base font-semibold text-gray-700 mb-2">{t('Payment method')} <span className="text-red-500">*</span></span>
-          {choiceRow(PAYMENT_METHODS, s.paymentMethod, 'paymentMethod', METHOD_ICONS)}
+          <span className="block text-base font-semibold text-gray-700 mb-2">{t('Payment method')} <span className="font-normal text-gray-400">{t('(optional)')}</span></span>
+          {choiceRow(PAYMENT_METHODS, s.paymentMethod, 'paymentMethod', METHOD_ICONS, { optional: true })}
           <span className="block text-base font-semibold text-gray-700 mt-5 mb-2">{t('Payment type')} <span className="font-normal text-gray-400">{t('(optional)')}</span></span>
           {choiceRow(PAYMENT_TYPES, s.paymentType, 'paymentType', TYPE_ICONS, { optional: true })}
         </div>
@@ -649,10 +657,15 @@ export default function KioskPage() {
               </>
             )}
             <p className="text-lg text-gray-700 mt-6">
-              {done.services.length ? done.services.map(t).join(' + ') : t('Other services only')} · {t(done.vehicle)} ·{' '}
-              {done.slot === 'Now' ? t('Starting now') : `${t('In')} ${t(done.slot)}`}
+              {[
+                done.services.length ? done.services.map(t).join(' + ') : t('Other services only'),
+                done.vehicle && t(done.vehicle),
+                done.slot === 'Now' ? t('Starting now') : `${t('In')} ${t(done.slot)}`,
+              ].filter(Boolean).join(' · ')}
             </p>
-            <p className="text-2xl font-extrabold text-gray-900 mt-2">{t('Total')}: {qar(done.total)}</p>
+            <p className="text-2xl font-extrabold text-gray-900 mt-2">
+              {done.priceUnknown ? t('Price confirmed at the counter') : `${t('Total')}: ${qar(done.total)}`}
+            </p>
             <p className="text-base text-gray-500 mt-4">
               {t('Please pay at the counter.')} {t('Watch the queue screen for your number.')}
             </p>
@@ -691,7 +704,8 @@ export default function KioskPage() {
             <div role="tablist" aria-label="Order steps" className="flex gap-2 overflow-x-auto">
               {STEPS.map((label, i) => {
                 const active = s.step === i;
-                const complete = !active && stepOk[i];
+                // Optional steps only get a tick once something is chosen in them.
+                const complete = !active && stepOk[i] && (i === 1 ? s.vehicle !== '' : i === 2 ? s.extras.length > 0 : true);
                 return (
                   <button
                     key={label}
@@ -755,7 +769,10 @@ export default function KioskPage() {
               <div className="flex justify-between items-baseline text-2xl font-extrabold text-gray-900 py-1">
                 <span>{t('Total')}</span><span>{qar(total)}</span>
               </div>
-              {hasStartingPrice && (
+              {priceUnknown && (
+                <p className="text-xs text-gray-500 mt-1">{t('Price confirmed at the counter')}</p>
+              )}
+              {hasStartingPrice && !priceUnknown && (
                 <p className="text-xs text-gray-500 mt-1">{t('Includes a starting price — final price confirmed at the counter.')}</p>
               )}
               {saveError && (

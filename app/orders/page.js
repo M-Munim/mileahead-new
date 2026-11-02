@@ -145,16 +145,11 @@ const buildReceiptMessage = (order, receiptUrl) => {
 const buildBookingMessage = (order) => {
   const name = order.customer.name && order.customer.name !== 'Walk-in customer' ? ` ${order.customer.name}` : '';
   const tokens = order.tokens?.length ? order.tokens.join(' · ') : order.queue || order.id;
+  // Client asked for the token only — the full details go in the receipt.
   return [
-    `*Magic Track — Booking Confirmation*`,
+    `*Magic Track*`,
     '',
-    `Hi${name}, your service booking has been received.`,
-    '',
-    `Token number${order.tokens?.length === 1 ? '' : 's'}: *${tokens}*`,
-    `Order: #${order.id}`,
-    `Services: ${[serviceLabel(order), ...(order.extras || [])].join(', ')}`,
-    `Vehicle: ${order.vehicle || '—'}${order.numberPlate ? ` (${order.numberPlate})` : ''}`,
-    `Total: ${formatQar(order.total)}`,
+    `Hi${name}, your token number${order.tokens?.length === 1 ? ' is' : 's are'}: *${tokens}*`,
   ].join('\n');
 };
 
