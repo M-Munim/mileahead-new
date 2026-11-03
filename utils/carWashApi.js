@@ -166,6 +166,7 @@ export function mapBookingToOrder(b) {
     createdAt: b.created_at || '',
     subtotal,
     total: num(b.price),
+    priceNote: b.price_note || '', // why staff changed the price; staff only
     cleaner: null,
     notes: b.special_instructions || '',
   };
@@ -387,7 +388,44 @@ export const updateOrderField = async (order, field, value) => {
   return res;
 };
 
-export const deleteOrder = (order) => bookingService.deleteBooking(order.originalId);
+/**
+ * Final price edited by staff, with the reason (price_note, staff only — never
+ * shown to customers). The server also logs it as "booking.price_change".
+ */
+export async function updateOrderPrice(order, total, note) {
+  const fd = new FormData();
+  fd.append('price', total);
+  fd.append('price_note', note);
+  let res;
+  try {
+    res = await bookingService.updateBooking(order.originalId, fd, MULTIPART);
+  } catch (error) {
+    if (/unknown column/i.test(error?.message || '')) {
+      throw new Error('The server is not updated for price notes yet. Please ask devops to deploy the latest backend.');
+    }
+    throw error;
+  }
+  if (res.data?.success === false) {
+    throw new Error(res.data?.message || 'The server did not save the price.');
+  }
+  return res;
+}
+
+/** Recent manual price edits for the Super Admin, newest first. */
+export async function fetchPriceChangeHistory() {
+  const res = await activityLogService.getAll({ action: 'booking.price_change', page: 1, limit: 100 });
+  if (res.data?.success === false) {
+    throw new Error(res.data?.message || 'Could not load the price change history.');
+  }
+  const data = res.data?.data;
+  if (!Array.isArray(data?.results)) {
+    throw new Error('The server returned an invalid price change history response.');
+  }
+  return data;
+}
+
+/** Deletes an order; `reason` goes to the Super Admin's deletion history. */
+export const deleteOrder = (order, reason) => bookingService.deleteBooking(order.originalId, reason ? { reason } : undefined);
 
 /** Makes the order's receipt PDF and stores it on the server; resolves to its public link. */
 export async function saveOrderReceipt(order) {

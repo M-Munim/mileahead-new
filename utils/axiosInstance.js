@@ -232,8 +232,8 @@ export const bookingService = {
     getRecentBookings: () =>
         api.get(API_PATHS.BOOKING.GET_RECENT_BOOKINGS),
 
-    deleteBooking: (id) =>
-        api.put(API_PATHS.BOOKING.DELETE_BOOKING(id)),
+    deleteBooking: (id, body) =>
+        api.put(API_PATHS.BOOKING.DELETE_BOOKING(id), body),
 
     uploadReceipt: (id, body, config = {}) =>
         api.post(API_PATHS.BOOKING.UPLOAD_RECEIPT(id), body, config),

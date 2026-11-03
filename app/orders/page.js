@@ -11,6 +11,7 @@ import Header from '../components/Header';
 import Toast from '../components/Toast';
 import ConfirmationDialog from '../components/ConfirmationDialog';
 import NewOrderModal from '../components/NewOrderModal';
+import DeleteOrderModal from '../components/DeleteOrderModal';
 import AppointmentModal from '../components/AppointmentModal';
 import { useAuth } from '../contexts/AuthContext';
 import { copyText, getWhatsAppUrl, toWhatsAppNumber } from '../../utils/location';
@@ -21,7 +22,7 @@ import {
 import {
   fetchCarWashOrders, createCarWashOrder, setOrderPaymentStatus, updateOrderField as saveOrderField,
   deleteOrder, fetchAppointments, createAppointment, cancelAppointment, setOrderStage, STAGES,
-  fetchDeletedBookingHistory, saveOrderReceipt,
+  fetchDeletedBookingHistory, saveOrderReceipt, updateOrderPrice as saveOrderPrice, fetchPriceChangeHistory,
 } from '../../utils/carWashApi';
 
 /**
@@ -65,7 +66,10 @@ const TABS = [
   { key: 'paid',   label: 'Paid' },
   { key: 'appointments', label: 'Appointments' },
   { key: 'deleted', label: 'Deletion history' },
+  { key: 'prices', label: 'Price changes' },
 ];
+/** Tabs only the Super Admin sees (the activity log is super_admin only). */
+const SUPER_ADMIN_TABS = ['deleted', 'prices'];
 
 const APPOINTMENT_PILL = {
   Detailing: 'bg-blue-100 text-blue-700',
@@ -364,9 +368,15 @@ function StatusPill({ status }) {
   );
 }
 
+/**
+ * Final price with an Edit button. A new price needs a short reason (client
+ * request): it is for the Magic Track team only, shown on the order, and the
+ * Super Admin sees every change in the "Price changes" tab.
+ */
 function EditableOrderTotal({ order, busy, onSave }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(String(order.total));
+  const [note, setNote] = useState('');
   const [error, setError] = useState('');
 
   const save = async (event) => {
@@ -376,21 +386,37 @@ function EditableOrderTotal({ order, busy, onSave }) {
       setError('Enter an amount of 0 or more with up to 2 decimal places.');
       return;
     }
+    const rounded = Math.round(amount * 100) / 100;
+    if (rounded === Number(order.total)) {
+      setEditing(false);
+      return;
+    }
+    if (!note.trim()) {
+      setError('Add a short note: why is the price changed?');
+      return;
+    }
 
     setError('');
-    const saved = await onSave(order, 'total', Math.round(amount * 100) / 100, 'final price');
+    const saved = await onSave(order, rounded, note.trim());
     if (saved) setEditing(false);
+  };
+
+  const keys = (event) => {
+    if (event.key === 'Enter') save(event);
+    if (event.key === 'Escape') { setEditing(false); setError(''); }
   };
 
   if (!editing) {
     return (
-      <div className="flex items-center gap-2 whitespace-nowrap">
+      <div className="whitespace-nowrap">
+        <div className="flex items-center gap-2">
         <span className="text-sm font-semibold text-gray-900">{formatQar(order.total)}</span>
         <button
           type="button"
           onClick={(event) => {
             event.stopPropagation();
             setValue(String(order.total));
+            setNote('');
             setError('');
             setEditing(true);
           }}
@@ -400,22 +426,25 @@ function EditableOrderTotal({ order, busy, onSave }) {
         >
           Edit
         </button>
+        </div>
+        {order.priceNote && (
+          <div className="mt-0.5 max-w-[180px] truncate text-[10.5px] text-gray-500" title={`Price note (staff only): ${order.priceNote}`}>
+            Note: {order.priceNote}
+          </div>
+        )}
       </div>
     );
   }
 
   return (
-    <div onClick={(event) => event.stopPropagation()} className="flex flex-wrap items-center gap-1.5">
+    <div onClick={(event) => event.stopPropagation()} className="flex flex-wrap items-center gap-1.5 max-w-[240px]">
       <input
         type="number"
         min="0"
         step="0.01"
         value={value}
         onChange={(event) => { setValue(event.target.value); setError(''); }}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter') save(event);
-          if (event.key === 'Escape') { setEditing(false); setError(''); }
-        }}
+        onKeyDown={keys}
         disabled={busy}
         aria-label={`Final price for order ${order.id}`}
         aria-describedby={error ? `order-price-error-${order.id}` : undefined}
@@ -442,6 +471,17 @@ function EditableOrderTotal({ order, busy, onSave }) {
       >
         Cancel
       </button>
+      <input
+        type="text"
+        maxLength={255}
+        value={note}
+        onChange={(event) => { setNote(event.target.value); setError(''); }}
+        onKeyDown={keys}
+        disabled={busy}
+        placeholder="Reason for the change (staff only)"
+        aria-label={`Reason for changing the price of order ${order.id}`}
+        className="w-full px-2 py-1 text-xs border border-gray-300"
+      />
       {error && <span id={`order-price-error-${order.id}`} className="w-full text-[10px] text-red-600" role="alert">{error}</span>}
     </div>
   );
@@ -481,6 +521,7 @@ function OrderDrawer({
       ? [['Subtotal', formatQar(order.subtotal)], [`Coupon (${COUPON_RATE * 100}% off)`, `− ${formatQar(order.subtotal - order.total)}`]]
       : []),
     ['Total', formatQar(order.total)],
+    ...(order.priceNote ? [['Price note (staff only)', order.priceNote]] : []),
     ...(order.notes ? [['Notes', order.notes]] : []),
   ];
   const cleanerMessage = buildCleanerMessage(order);
@@ -716,6 +757,9 @@ export default function OrdersPage() {
   const [deletedHistory, setDeletedHistory] = useState([]);
   const [deletedHistoryLoading, setDeletedHistoryLoading] = useState(false);
   const [deletedHistoryError, setDeletedHistoryError] = useState('');
+  const [priceHistory, setPriceHistory] = useState([]);
+  const [priceHistoryLoading, setPriceHistoryLoading] = useState(false);
+  const [priceHistoryError, setPriceHistoryError] = useState('');
   const { hasPermission } = useAuth();
   const canDelete = hasPermission('canDeleteBookings');
   const canViewDeletionHistory = hasPermission('canManageUsers');
@@ -726,6 +770,7 @@ export default function OrdersPage() {
   const closeAppointment = useCallback(() => setShowAppointment(false), []);
   const isAppointmentsTab = activeTab === 'appointments';
   const isDeletionHistoryTab = activeTab === 'deleted';
+  const isPriceHistoryTab = activeTab === 'prices';
 
   const setBusy = useCallback((id, on) => {
     setBusyIds((prev) => {
@@ -786,11 +831,11 @@ export default function OrdersPage() {
   }, [loadData]);
 
   const counts = useMemo(() => {
-    const c = { all: orders.length, appointments: appointments.length, deleted: deletedHistory.length };
+    const c = { all: orders.length, appointments: appointments.length, deleted: deletedHistory.length, prices: priceHistory.length };
     for (const s of STATUSES) c[s] = 0;
     for (const o of orders) c[o.status] = (c[o.status] || 0) + 1;
     return c;
-  }, [orders, appointments, deletedHistory]);
+  }, [orders, appointments, deletedHistory, priceHistory]);
 
   const visibleOrders = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -813,6 +858,7 @@ export default function OrdersPage() {
       entry.old_values?.passenger_name,
       entry.old_values?.Service,
       entry.old_values?.package,
+      entry.new_values?.delete_reason,
       entry.actor_name,
       entry.actor_role,
     ].some((value) => String(value || '').toLowerCase().includes(q)));
@@ -835,6 +881,38 @@ export default function OrdersPage() {
   useEffect(() => {
     if (isDeletionHistoryTab && canViewDeletionHistory) loadDeletedHistory();
   }, [isDeletionHistoryTab, canViewDeletionHistory, loadDeletedHistory]);
+
+  const visiblePriceHistory = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return priceHistory;
+    return priceHistory.filter((entry) => [
+      entry.booking_id,
+      entry.old_values?.booking_number,
+      entry.old_values?.passenger_name,
+      entry.old_values?.car_number,
+      entry.new_values?.price_note,
+      entry.actor_name,
+      entry.actor_role,
+    ].some((value) => String(value || '').toLowerCase().includes(q)));
+  }, [priceHistory, query]);
+
+  const loadPriceHistory = useCallback(async () => {
+    setPriceHistoryLoading(true);
+    setPriceHistoryError('');
+    try {
+      const result = await fetchPriceChangeHistory();
+      setPriceHistory(result.results);
+    } catch (error) {
+      console.error('Error loading price change history:', error);
+      setPriceHistoryError(error.message || 'Could not load the price change history.');
+    } finally {
+      setPriceHistoryLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isPriceHistoryTab && canViewDeletionHistory) loadPriceHistory();
+  }, [isPriceHistoryTab, canViewDeletionHistory, loadPriceHistory]);
 
   // Page of the table. It goes back to page 1 whenever the tab or search
   // changes (kept with its tab + search, so no effect is needed).
@@ -905,14 +983,14 @@ export default function OrdersPage() {
   }, [checkedOrders]);
 
   // Every action below saves to the backend (utils/carWashApi.js).
-  const confirmDelete = useCallback(async () => {
+  const confirmDelete = useCallback(async (reason) => {
     const list = pendingDelete || [];
     if (list.length === 0 || !canDelete) return;
     const deleted = [];
     let lastError = null;
     for (const order of list) {
       try {
-        await deleteOrder(order);
+        await deleteOrder(order, reason);
         deleted.push(order.id);
       } catch (error) {
         console.error(`Error deleting order #${order.id}:`, error);
@@ -928,6 +1006,7 @@ export default function OrdersPage() {
       });
       if (deleted.includes(selectedId)) setSelectedId(null);
     }
+    setPendingDelete(null);
     if (!lastError) {
       setToast({ message: deleted.length === 1 ? `Order #${deleted[0]} deleted` : `${deleted.length} orders deleted`, type: 'success' });
     } else {
@@ -966,6 +1045,25 @@ export default function OrdersPage() {
       setBusy(order.id, false);
     }
     return saved;
+  }, [setBusy]);
+
+  // Final price edited with a reason; shown at once, undone if the save fails.
+  const updatePrice = useCallback(async (order, total, note) => {
+    const previous = { total: order.total, priceNote: order.priceNote };
+    setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, total, priceNote: note } : o)));
+    setBusy(order.id, true);
+    try {
+      await saveOrderPrice(order, total, note);
+      setToast({ message: `#${order.id} final price: ${formatQar(total)}`, type: 'success' });
+      return true;
+    } catch (error) {
+      console.error(`Error updating the price for #${order.id}:`, error);
+      setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, ...previous } : o)));
+      setToast({ message: `Could not save the price for #${order.id}: ${error.message || 'server error'}`, type: 'error' });
+      return false;
+    } finally {
+      setBusy(order.id, false);
+    }
   }, [setBusy]);
 
   // Future appointment (saved as a booking with Service = 'appointment').
@@ -1096,7 +1194,7 @@ export default function OrdersPage() {
 
               {/* Tabs */}
               <div className="flex gap-2 px-5 pt-4 pb-1 overflow-x-auto">
-                {TABS.filter((tab) => tab.key !== 'deleted' || canViewDeletionHistory).map((tab) => {
+                {TABS.filter((tab) => !SUPER_ADMIN_TABS.includes(tab.key) || canViewDeletionHistory).map((tab) => {
                   const active = activeTab === tab.key;
                   return (
                     <button
@@ -1158,7 +1256,80 @@ export default function OrdersPage() {
 
               {/* Table */}
               <div className="p-4 sm:p-5">
-                {isDeletionHistoryTab ? (
+                {isPriceHistoryTab ? (
+                  <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                    <div className="flex items-center justify-between gap-3 px-4 py-3 bg-gray-50 border-b border-gray-200">
+                      <p className="text-xs text-gray-600">
+                        Most recent {priceHistory.length} price changes, with the reason staff gave. Only you (Super Admin) can see this list.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={loadPriceHistory}
+                        disabled={priceHistoryLoading}
+                        className={`text-xs font-medium px-3 py-1.5 disabled:opacity-60 ${TONE.ghost}`}
+                      >
+                        {priceHistoryLoading ? 'Loading…' : 'Refresh'}
+                      </button>
+                    </div>
+                    {priceHistoryError ? (
+                      <div className="p-5 text-sm text-red-700" role="alert">
+                        {priceHistoryError}
+                      </div>
+                    ) : (
+                      <table className="w-full border-collapse min-w-[860px]">
+                        <thead>
+                          <tr>
+                            {['Order', 'Customer', 'Old price', 'New price', 'Reason', 'Changed by', 'Changed at'].map((heading) => (
+                              <th key={heading} className="text-left text-[10px] uppercase tracking-wide text-gray-500 font-semibold bg-white px-3.5 py-2.5 border-b border-gray-200 whitespace-nowrap">
+                                {heading}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {visiblePriceHistory.map((entry) => {
+                            const before = entry.old_values || {};
+                            const after = entry.new_values || {};
+                            const changedAt = entry.created_at ? new Date(entry.created_at) : null;
+                            return (
+                              <tr key={entry.id} className="border-b border-gray-100 last:border-0 align-top">
+                                <td className="px-3.5 py-3 text-sm font-semibold text-gray-900 whitespace-nowrap">
+                                  #{before.booking_number || entry.booking_id}
+                                </td>
+                                <td className="px-3.5 py-3 text-sm text-gray-700">
+                                  {before.passenger_name || '—'}
+                                  {before.car_number && <span className="block text-[11px] text-gray-500">Plate {before.car_number}</span>}
+                                </td>
+                                <td className="px-3.5 py-3 text-sm text-gray-500 whitespace-nowrap line-through">
+                                  {before.price != null && before.price !== '' ? formatQar(before.price) : '—'}
+                                </td>
+                                <td className="px-3.5 py-3 text-sm font-semibold text-gray-900 whitespace-nowrap">
+                                  {after.price != null && after.price !== '' ? formatQar(after.price) : '—'}
+                                </td>
+                                <td className="px-3.5 py-3 text-sm text-gray-700 max-w-[260px]">
+                                  {after.price_note || <span className="text-gray-400">No reason given</span>}
+                                </td>
+                                <td className="px-3.5 py-3 text-sm text-gray-700 whitespace-nowrap">
+                                  {[entry.actor_name, entry.actor_role].filter(Boolean).join(' · ') || '—'}
+                                </td>
+                                <td className="px-3.5 py-3 text-sm text-gray-700 whitespace-nowrap">
+                                  {changedAt && !Number.isNaN(changedAt.getTime()) ? changedAt.toLocaleString() : entry.created_at || '—'}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                          {!priceHistoryLoading && visiblePriceHistory.length === 0 && (
+                            <tr>
+                              <td colSpan={7} className="px-4 py-10 text-center text-sm text-gray-500">
+                                {priceHistory.length ? 'No price changes match your search.' : 'No price changes recorded yet.'}
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                ) : isDeletionHistoryTab ? (
                   <div className="overflow-x-auto border border-gray-200 rounded-lg">
                     <div className="flex items-center justify-between gap-3 px-4 py-3 bg-gray-50 border-b border-gray-200">
                       <p className="text-xs text-gray-600">
@@ -1181,7 +1352,7 @@ export default function OrdersPage() {
                       <table className="w-full border-collapse min-w-[760px]">
                         <thead>
                           <tr>
-                            {['Order', 'Customer', 'Service', 'Final price', 'Deleted by', 'Deleted at'].map((heading) => (
+                            {['Order', 'Customer', 'Service', 'Final price', 'Reason', 'Deleted by', 'Deleted at'].map((heading) => (
                               <th key={heading} className="text-left text-[10px] uppercase tracking-wide text-gray-500 font-semibold bg-white px-3.5 py-2.5 border-b border-gray-200 whitespace-nowrap">
                                 {heading}
                               </th>
@@ -1206,6 +1377,9 @@ export default function OrdersPage() {
                                 <td className="px-3.5 py-3 text-sm text-gray-700 whitespace-nowrap">
                                   {deleted.price != null && deleted.price !== '' ? formatQar(deleted.price) : '—'}
                                 </td>
+                                <td className="px-3.5 py-3 text-sm text-gray-700 max-w-[260px]">
+                                  {entry.new_values?.delete_reason || <span className="text-gray-400">No reason given</span>}
+                                </td>
                                 <td className="px-3.5 py-3 text-sm text-gray-700 whitespace-nowrap">
                                   {[entry.actor_name, entry.actor_role].filter(Boolean).join(' · ') || '—'}
                                 </td>
@@ -1217,7 +1391,7 @@ export default function OrdersPage() {
                           })}
                           {!deletedHistoryLoading && visibleDeletionHistory.length === 0 && (
                             <tr>
-                              <td colSpan={6} className="px-4 py-10 text-center text-sm text-gray-500">
+                              <td colSpan={7} className="px-4 py-10 text-center text-sm text-gray-500">
                                 {deletedHistory.length ? 'No deletions match your search.' : 'No booking deletions recorded yet.'}
                               </td>
                             </tr>
@@ -1397,7 +1571,7 @@ export default function OrdersPage() {
                             <EditableOrderTotal
                               order={o}
                               busy={busyIds.has(o.id)}
-                              onSave={updateOrderField}
+                              onSave={updatePrice}
                             />
                           </td>
                           <td className="px-3.5 py-3 text-sm text-gray-700 whitespace-nowrap">{o.time}</td>
@@ -1488,7 +1662,9 @@ export default function OrdersPage() {
                   {isAppointmentsTab
                     ? 'Future appointments, soonest first · use Take Appointment to book one'
                     : isDeletionHistoryTab
-                    ? 'Deletion history is visible to the Super Admin and records the deleted order, staff member, and time'
+                    ? 'Deletion history is visible to the Super Admin and records the deleted order, the reason, the staff member and the time'
+                    : isPriceHistoryTab
+                    ? 'Every manual price edit, with the old and new price, the reason, the staff member and the time'
                     : `Tap a row to open the order · move each car Waiting → Washing → Ready → Collected (customers see it on the queue screen) · Mark Paid when the customer pays${canDelete ? ' · tick orders to send or delete them' : ''}`}
                 </div>
               </div>
@@ -1531,19 +1707,13 @@ export default function OrdersPage() {
         cancelText="Keep"
       />
 
-      <ConfirmationDialog
-        isOpen={!!pendingDelete}
-        onClose={() => setPendingDelete(null)}
-        onConfirm={confirmDelete}
-        type="error"
-        title={pendingDelete?.length > 1 ? `Delete ${pendingDelete.length} orders?` : 'Delete order?'}
-        message={
-          pendingDelete?.length > 1
-            ? `Delete ${pendingDelete.length} orders (${pendingDelete.map((o) => `#${o.id}`).join(', ')}) now? The Super Admin can review the deletion history.`
-            : `Delete order #${pendingDelete?.[0]?.id} now? The Super Admin can review the deletion history.`
-        }
-        confirmText="Delete"
-      />
+      {pendingDelete?.length > 0 && (
+        <DeleteOrderModal
+          orders={pendingDelete}
+          onClose={() => setPendingDelete(null)}
+          onSubmit={confirmDelete}
+        />
+      )}
 
       {toast && (
         <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />

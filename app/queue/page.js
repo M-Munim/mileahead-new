@@ -44,18 +44,21 @@ const COLUMNS = [
 ];
 
 // Landscape: Waiting | Washing | Ready side by side. Portrait: Ready on top, then Washing, then Waiting.
+// All three use the same column width, card size and token size (client
+// request, Nov 2026) — only the colour tells the stages apart.
+const CARD_GRID = 'grid-cols-2 portrait:grid-cols-4';
 const COLUMN_STYLE = {
   waiting: {
     head: 'bg-white/10 text-white', card: 'bg-white/10 text-white', plate: 'text-white/60',
-    order: 'portrait:order-3', grid: 'grid-cols-2 xl:grid-cols-3 portrait:grid-cols-5',
+    order: 'portrait:order-3', grid: CARD_GRID,
   },
   washing: {
     head: 'bg-[var(--primary)] text-white', card: 'bg-[var(--primary)]/15 text-white border border-[var(--primary)]/50', plate: 'text-white/70',
-    order: 'portrait:order-2', grid: 'grid-cols-2 xl:grid-cols-3 portrait:grid-cols-4',
+    order: 'portrait:order-2', grid: CARD_GRID,
   },
   ready: {
     head: 'bg-green-600 text-white', card: 'bg-green-600 text-white', plate: 'text-white/85',
-    order: 'portrait:order-1', grid: 'grid-cols-2 portrait:grid-cols-3',
+    order: 'portrait:order-1', grid: CARD_GRID,
   },
 };
 
@@ -389,11 +392,10 @@ export default function QueuePage() {
       )}
 
       {/* Columns (rows on a portrait screen) */}
-      <main className="flex-1 grid gap-[1.8vmin] p-[2.2vmin] min-h-0 grid-cols-1 landscape:grid-cols-[1fr_1fr_1.25fr] portrait:grid-rows-[1.3fr_1fr_1fr]">
+      <main className="flex-1 grid gap-[1.8vmin] p-[2.2vmin] min-h-0 grid-cols-1 landscape:grid-cols-3 portrait:grid-rows-3">
         {COLUMNS.map((col) => {
           const style = COLUMN_STYLE[col.key];
           const list = byStage(col.key);
-          const big = col.key === 'ready';
           return (
             <section key={col.key} className={`flex flex-col min-h-0 overflow-hidden bg-white/[0.04] border border-white/10 ${style.order}`} aria-label={col.en}>
               <h2 className={`flex items-baseline justify-between gap-3 px-[2.2vmin] py-[1.4vmin] ${style.head}`}>
@@ -404,14 +406,12 @@ export default function QueuePage() {
                 {list.map((car) => (
                   <div
                     key={car.id}
-                    className={`flex flex-col items-center justify-center text-center ${big ? 'py-[2.4vmin]' : 'py-[1.6vmin]'} ${style.card} ${newReady[car.id] ? 'animate-pulse ring-[0.5vmin] ring-white' : ''}`}
+                    className={`flex flex-col items-center justify-center text-center py-[2vmin] ${style.card} ${newReady[car.id] ? 'animate-pulse ring-[0.5vmin] ring-white' : ''}`}
                   >
                     {/* One token per kind of work (W172 · T172 …); several shrink to fit the card. */}
                     <span
                       className={`flex flex-col gap-[0.6vmin] font-black leading-none tabular-nums ${
-                        (car.tokens?.length || 1) > 1
-                          ? big ? 'text-[5vmin]' : 'text-[3.6vmin]'
-                          : big ? 'text-[7.5vmin]' : 'text-[5vmin]'
+                        (car.tokens?.length || 1) > 1 ? 'text-[4.6vmin]' : 'text-[6.5vmin]'
                       }`}
                       dir="ltr"
                     >
