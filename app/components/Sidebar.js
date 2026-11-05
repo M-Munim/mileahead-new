@@ -1,11 +1,12 @@
 'use client';
 
-import { Droplets, Users, MonitorSmartphone, Tv, MonitorPlay, ClipboardCheck, ExternalLink, X, ChevronRight } from 'lucide-react';
+import { Droplets, Users, MonitorSmartphone, Tv, MonitorPlay, ClipboardCheck, Megaphone, ExternalLink, X, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect } from 'react';
 import NextImage from 'next/image';
 import logo from "../../public/magic-track-logo.png";
+import { useAuth } from '../contexts/AuthContext';
 
 // Client scope (initial stage): Car Wash Orders, Customer Data, the kiosk and the queue screen.
 // More modules will be added back here as they are requested.
@@ -16,6 +17,8 @@ const menuItems = [
   { icon: ClipboardCheck, label: 'Day Close', href: '/day-close' },
   // Videos / pictures the queue screen plays between queue views.
   { icon: MonitorPlay, label: 'Screen Ads', href: '/screen-ads' },
+  // WhatsApp messages to many customers (Super Admin only).
+  { icon: Megaphone, label: 'WhatsApp Broadcast', href: '/broadcast', permission: 'canManageBroadcasts' },
   // Customer self-service screen — opens in its own tab (full screen, no sidebar).
   { icon: MonitorSmartphone, label: 'Customer Kiosk', href: '/kiosk', newTab: true },
   // Order status board for the TV in the waiting area.
@@ -24,6 +27,7 @@ const menuItems = [
 
 export default function Sidebar({ isOpen, toggleSidebar }) {
   const pathname = usePathname();
+  const { hasPermission } = useAuth();
 
   useEffect(() => {
     if (isOpen) {
@@ -65,7 +69,7 @@ export default function Sidebar({ isOpen, toggleSidebar }) {
           {/* Navigation */}
           <nav className="px-3 py-3 flex-1" aria-label="Main navigation">
             <div className="stagger-fade-in">
-              {menuItems.map((item) => {
+              {menuItems.filter((item) => !item.permission || hasPermission(item.permission)).map((item) => {
                 const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
                 return (
                   <Link

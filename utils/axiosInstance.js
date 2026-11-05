@@ -243,3 +243,21 @@ export const activityLogService = {
     getAll: (params) =>
         api.get(API_PATHS.ACTIVITY_LOG.GET_ALL, { params }),
 };
+
+// ---------- WHATSAPP BROADCAST ----------
+export const broadcastService = {
+    getSettings: () => api.get(API_PATHS.BROADCAST.SETTINGS),
+
+    saveSettings: (body) => api.put(API_PATHS.BROADCAST.SETTINGS, body),
+
+    previewAudience: (audience) =>
+        api.post(API_PATHS.BROADCAST.AUDIENCE_PREVIEW, { audience }),
+
+    getAll: () => api.get(API_PATHS.BROADCAST.GET_ALL),
+
+    add: (body) => api.post(API_PATHS.BROADCAST.ADD, body),
+
+    update: (id, body) => api.put(API_PATHS.BROADCAST.UPDATE(id), body),
+
+    remove: (id) => api.put(API_PATHS.BROADCAST.DELETE(id)),
+};

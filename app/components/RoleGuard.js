@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth, ROLES, ROLE_NAMES } from '../contexts/AuthContext';
 import { Shield, UserCog, AlertCircle } from 'lucide-react';
@@ -24,7 +24,8 @@ export default function RoleGuard({
 }) {
   const { role, loading, isLoggedIn } = useAuth();
   const router = useRouter();
-  const [isAuthorized, setIsAuthorized] = useState(false);
+  // Worked out while rendering, so an allowed user never sees "Access Denied" flash.
+  const isAuthorized = allowedRoles.length === 0 || allowedRoles.includes(role);
 
   useEffect(() => {
     if (loading) return;
@@ -34,21 +35,10 @@ export default function RoleGuard({
       return;
     }
 
-    if (allowedRoles.length === 0) {
-      // No role restriction
-      setIsAuthorized(true);
-      return;
+    if (!isAuthorized && !showMessage) {
+      router.push(redirectTo);
     }
-
-    if (allowedRoles.includes(role)) {
-      setIsAuthorized(true);
-    } else {
-      setIsAuthorized(false);
-      if (!showMessage) {
-        router.push(redirectTo);
-      }
-    }
-  }, [role, loading, isLoggedIn, allowedRoles, redirectTo, showMessage, router]);
+  }, [isAuthorized, loading, isLoggedIn, redirectTo, showMessage, router]);
 
   if (loading) {
     return <Skeleton.PageLoader />;
@@ -75,7 +65,7 @@ export default function RoleGuard({
                 Access Denied
               </h2>
               <p className="text-gray-600 mb-6">
-                You don't have permission to access this page.
+                You don&apos;t have permission to access this page.
               </p>
               <div className="bg-gray-50 rounded-lg p-4 mb-6">
                 <p className="text-sm text-gray-700">

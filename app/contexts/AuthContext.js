@@ -32,6 +32,7 @@ export const ROLE_PERMISSIONS = {
     canManageFleet: true,
     canAccessReports: true,
     canManageSettings: true,
+    canManageBroadcasts: true,
   },
   [ROLES.ADMIN]: {
     canAccessDashboard: true,
@@ -44,6 +45,7 @@ export const ROLE_PERMISSIONS = {
     canManageFleet: true,
     canAccessReports: true,
     canManageSettings: true,
+    canManageBroadcasts: false,
   },
 };
 

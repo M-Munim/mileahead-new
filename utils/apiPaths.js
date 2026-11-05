@@ -103,4 +103,14 @@ export const API_PATHS = {
     ACTIVITY_LOG: {
         GET_ALL: "/api/v1/activity-log",
     },
+
+    // WhatsApp broadcast (Super Admin only)
+    BROADCAST: {
+        SETTINGS: "/api/v1/broadcast/settings",
+        AUDIENCE_PREVIEW: "/api/v1/broadcast/audience-preview",
+        GET_ALL: "/api/v1/broadcast/all",
+        ADD: "/api/v1/broadcast/add",
+        UPDATE: (id) => `/api/v1/broadcast/update/${id}`,
+        DELETE: (id) => `/api/v1/broadcast/delete/${id}`,
+    },
 };
