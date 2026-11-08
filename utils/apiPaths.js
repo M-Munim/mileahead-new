@@ -112,5 +112,12 @@ export const API_PATHS = {
         ADD: "/api/v1/broadcast/add",
         UPDATE: (id) => `/api/v1/broadcast/update/${id}`,
         DELETE: (id) => `/api/v1/broadcast/delete/${id}`,
+        OPT_OUTS: "/api/v1/broadcast/opt-outs",
+        OPT_OUT_DELETE: (phone) => `/api/v1/broadcast/opt-outs/delete/${encodeURIComponent(phone)}`,
+        TEMPLATES: "/api/v1/broadcast/templates",
+        TEMPLATE_ADD: "/api/v1/broadcast/templates/add",
+        TEMPLATE_UPDATE: (id) => `/api/v1/broadcast/templates/update/${id}`,
+        TEMPLATE_DELETE: (id) => `/api/v1/broadcast/templates/delete/${id}`,
+        TEMPLATE_SUBMIT: (id) => `/api/v1/broadcast/templates/submit/${id}`,
     },
 };

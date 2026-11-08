@@ -8,17 +8,25 @@ import Toast from '../components/Toast';
 import ConfirmationDialog from '../components/ConfirmationDialog';
 import BroadcastComposer from '../components/BroadcastComposer';
 import WhatsAppSettingsForm from '../components/WhatsAppSettingsForm';
+import BroadcastHistory, { HISTORY_STATUSES } from '../components/BroadcastHistory';
+import OptOutList from '../components/OptOutList';
+import TemplateManager from '../components/TemplateManager';
 import { broadcastService } from '../../utils/axiosInstance';
+import { audienceText, dateText } from '../../utils/broadcastText';
 
 /**
- * WhatsApp Broadcast (Super Admin): write a message, pick the customers and
- * save it, plus the Meta connection details. Sending stays locked on the
+ * WhatsApp Broadcast (Super Admin): write message templates for Meta to
+ * approve, pick the customers and save a broadcast, see what was sent, keep
+ * the opt-out list, plus the Meta connection details. Sending stays locked on the
  * server until the Meta account is connected.
  */
 
 const TABS = [
   { key: 'new', label: 'New broadcast' },
+  { key: 'templates', label: 'Message templates' },
   { key: 'saved', label: 'Drafts & scheduled' },
+  { key: 'history', label: 'History' },
+  { key: 'optouts', label: 'Opt-out list' },
   { key: 'settings', label: 'WhatsApp settings' },
 ];
 
@@ -29,24 +37,14 @@ const STATUS_PILL = {
   scheduled: 'bg-blue-100 text-blue-700',
 };
 
-const AUDIENCE_LABEL = {
-  all: () => 'All customers',
-  recent: (days) => `Visited in the last ${days} days`,
-  inactive: (days) => `No visit for ${days} days`,
-};
-
-const audienceText = (audience) => {
-  const label = (AUDIENCE_LABEL[audience?.type] || AUDIENCE_LABEL.all)(audience?.days);
-  return audience?.service ? `${label} · ${audience.service}` : label;
-};
-
-const dateText = (value) =>
-  (value ? new Date(value).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }) : '—');
+// A scheduled time that has passed while sending is still locked
+const isOverdue = (b) => b.status === 'scheduled' && b.scheduled_at && new Date(b.scheduled_at).getTime() < Date.now();
 
 export default function BroadcastPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [tab, setTab] = useState('new');
   const [broadcasts, setBroadcasts] = useState([]);
+  const [templates, setTemplates] = useState([]);
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
@@ -58,10 +56,16 @@ export default function BroadcastPage() {
   const toggleSidebar = useCallback(() => setSidebarOpen((v) => !v), []);
 
   const loadAll = useCallback(async () => {
-    const [listResult, settingsResult] = await Promise.allSettled([broadcastService.getAll(), broadcastService.getSettings()]);
-    const failed = [listResult, settingsResult].find((r) => r.status === 'rejected');
+    const results = await Promise.allSettled([
+      broadcastService.getAll(),
+      broadcastService.getSettings(),
+      broadcastService.getTemplates(),
+    ]);
+    const [listResult, settingsResult, templatesResult] = results;
+    const failed = results.find((r) => r.status === 'rejected');
     if (listResult.status === 'fulfilled') setBroadcasts(listResult.value.data?.data || []);
     if (settingsResult.status === 'fulfilled') setSettings(settingsResult.value.data?.data || null);
+    if (templatesResult.status === 'fulfilled') setTemplates(templatesResult.value.data?.data || []);
     if (failed) {
       console.error('Error loading broadcasts:', failed.reason);
       setLoadError(failed.reason?.status === 404
@@ -84,6 +88,7 @@ export default function BroadcastPage() {
   };
 
   const saved = broadcasts.filter((b) => OPEN_STATUSES.includes(b.status));
+  const historyCount = broadcasts.filter((b) => HISTORY_STATUSES.includes(b.status)).length;
 
   const closeForm = () => {
     setEditing(null);
@@ -172,7 +177,9 @@ export default function BroadcastPage() {
                     tab === t.key ? 'border-[var(--primary)] text-[var(--primary-dark)]' : 'border-transparent text-gray-500 hover:text-gray-800'
                   }`}
                 >
-                  {t.label}{t.key === 'saved' && saved.length > 0 ? ` (${saved.length})` : ''}
+                  {t.label}
+                  {t.key === 'saved' && saved.length > 0 ? ` (${saved.length})` : ''}
+                  {t.key === 'history' && historyCount > 0 ? ` (${historyCount})` : ''}
                 </button>
               ))}
             </div>
@@ -182,9 +189,11 @@ export default function BroadcastPage() {
               <BroadcastComposer
                 key={editing ? `edit-${editing.id}` : `new-${formKey}`}
                 editing={editing}
+                templates={templates}
                 sendingEnabled={!!settings?.sending_enabled}
                 onSaved={handleSaved}
                 onCancelEdit={closeForm}
+                onGoToTemplates={() => setTab('templates')}
               />
             </div>
 
@@ -221,7 +230,12 @@ export default function BroadcastPage() {
                           <td className="px-3 py-3">
                             <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold capitalize ${STATUS_PILL[b.status]}`}>{b.status}</span>
                           </td>
-                          <td className="px-3 py-3 text-gray-700 whitespace-nowrap">{dateText(b.scheduled_at)}</td>
+                          <td className="px-3 py-3 text-gray-700 whitespace-nowrap">
+                            {dateText(b.scheduled_at)}
+                            {isOverdue(b) && !settings?.sending_enabled && (
+                              <span className="block text-xs text-amber-700">Not sent: WhatsApp not connected yet</span>
+                            )}
+                          </td>
                           <td className="px-5 py-3">
                             <div className="flex items-center justify-end gap-1.5">
                               <button type="button" onClick={() => startEdit(b)} className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors">
@@ -239,6 +253,23 @@ export default function BroadcastPage() {
                 </div>
               )
             )}
+
+            {tab === 'templates' && (
+              <TemplateManager
+                templates={templates}
+                loading={loading}
+                sendingEnabled={!!settings?.sending_enabled}
+                onToast={(message, type) => setToast({ message, type })}
+                onChanged={async (message) => {
+                  setToast({ message, type: 'success' });
+                  await loadAll();
+                }}
+              />
+            )}
+
+            {tab === 'history' && <BroadcastHistory broadcasts={broadcasts} loading={loading} />}
+
+            {tab === 'optouts' && <OptOutList onToast={(message, type) => setToast({ message, type })} />}
 
             {/* Only once loaded: an empty form saved by mistake would wipe the saved details. */}
             {tab === 'settings' && !settings && (

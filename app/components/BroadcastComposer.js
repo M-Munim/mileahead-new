@@ -1,27 +1,18 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { Loader2, AlertCircle, Users, Lock, Save, CalendarClock, X } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Loader2, AlertCircle, Users, Lock, Save, CalendarClock, X, CheckCircle2, Info } from 'lucide-react';
+import WhatsAppPreview from './WhatsAppPreview';
 import { broadcastService } from '../../utils/axiosInstance';
 import { SERVICE_GROUPS } from '../../utils/priceList';
+import { TEMPLATE_STATUS } from '../../utils/broadcastText';
 
 /**
- * Write a broadcast, pick who gets it and save it as a draft or scheduled.
- * Meta only delivers broadcasts from approved templates, so the message here
- * is a copy of the template text, used for the preview. {{name}} is the
- * customer's name. Pass `editing` to change a saved broadcast; give the
+ * Pick a message template, pick who gets it and save it as a draft or
+ * scheduled. Meta only delivers approved templates, so only an approved one
+ * can be scheduled. Pass `editing` to change a saved broadcast; give the
  * component `key={editing?.id}` so the form starts fresh for each one.
  */
-const TEMPLATE_NAME = /^[a-z0-9_]{1,150}$/;
-const MAX_MESSAGE = 1024;
-const NAME_TAG = '{{name}}';
-const SAMPLE_NAME = 'Ahmed';
-
-const LANGUAGES = [
-  { value: 'en', label: 'English' },
-  { value: 'en_US', label: 'English (US)' },
-  { value: 'ar', label: 'Arabic' },
-];
 
 const AUDIENCES = [
   { value: 'all', label: 'All customers' },
@@ -40,18 +31,9 @@ const toLocalInput = (iso) => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };
 
-/** *bold* the way WhatsApp shows it. */
-function WhatsAppText({ text }) {
-  return text.split(/(\*[^*\n]+\*)/g).map((part, i) => (
-    /^\*[^*\n]+\*$/.test(part) ? <b key={i}>{part.slice(1, -1)}</b> : part
-  ));
-}
-
-export default function BroadcastComposer({ editing, sendingEnabled, onSaved, onCancelEdit }) {
+export default function BroadcastComposer({ editing, templates = [], sendingEnabled, onSaved, onCancelEdit, onGoToTemplates }) {
   const [title, setTitle] = useState(editing?.title || '');
-  const [templateName, setTemplateName] = useState(editing?.template_name || '');
-  const [language, setLanguage] = useState(editing?.template_language || 'en');
-  const [message, setMessage] = useState(editing?.message_body || '');
+  const [templateId, setTemplateId] = useState(editing?.template_id ? String(editing.template_id) : '');
   const [type, setType] = useState(editing?.audience?.type || 'all');
   const [days, setDays] = useState(String(editing?.audience?.days || 30));
   const [service, setService] = useState(editing?.audience?.service || '');
@@ -61,7 +43,8 @@ export default function BroadcastComposer({ editing, sendingEnabled, onSaved, on
   const [countError, setCountError] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
-  const messageBox = useRef(null);
+  const selected = templates.find((t) => String(t.id) === templateId) || null;
+  const approved = selected?.status === 'approved';
 
   const daysNumber = Number(days);
   const daysOk = type === 'all' || (Number.isInteger(daysNumber) && daysNumber >= 1 && daysNumber <= 3650);
@@ -90,19 +73,13 @@ export default function BroadcastComposer({ editing, sendingEnabled, onSaved, on
     return () => { stale = true; clearTimeout(timer); };
   }, [type, daysNumber, daysOk, service]);
 
-  const insertName = () => {
-    const box = messageBox.current;
-    const at = box?.selectionStart ?? message.length;
-    setMessage(`${message.slice(0, at)}${NAME_TAG}${message.slice(box?.selectionEnd ?? at)}`);
-    box?.focus();
-  };
-
   const firstProblem = () => {
     if (!title.trim()) return 'Give this broadcast a name.';
-    if (!TEMPLATE_NAME.test(templateName.trim())) return 'Enter the Meta template name: lowercase letters, numbers and _ only.';
-    if (!message.trim()) return 'Write the message.';
+    if (!templateId) return 'Pick the message to send.';
+    if (!selected) return 'That message template no longer exists. Pick another one.';
     if (!daysOk) return 'Enter a number of days from 1 to 3650.';
     if (when && new Date(when).getTime() < Date.now()) return 'Choose a time in the future.';
+    if (when && !approved) return 'Only a message Meta has approved can be scheduled. Leave the time empty to save a draft.';
     return '';
   };
 
@@ -116,9 +93,7 @@ export default function BroadcastComposer({ editing, sendingEnabled, onSaved, on
     setSaving(true);
     const body = {
       title: title.trim(),
-      template_name: templateName.trim(),
-      template_language: language,
-      message_body: message.trim(),
+      template_id: Number(templateId),
       audience: { type, days: type === 'all' ? null : daysNumber, service: service || null },
       scheduled_at: when ? new Date(when).toISOString() : null,
     };
@@ -132,8 +107,6 @@ export default function BroadcastComposer({ editing, sendingEnabled, onSaved, on
       setSaving(false);
     }
   };
-
-  const preview = message.trim().replaceAll(NAME_TAG, SAMPLE_NAME);
 
   return (
     <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-5 p-5" noValidate>
@@ -153,40 +126,37 @@ export default function BroadcastComposer({ editing, sendingEnabled, onSaved, on
           <p className="mt-1 text-[11px] text-gray-500">For the Magic Track team only. Customers don&apos;t see it.</p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-[1fr_180px] gap-4">
-          <div>
-            <label htmlFor="bc-template">Meta template name<span className="text-red-500" aria-hidden="true"> *</span></label>
-            <input id="bc-template" dir="ltr" value={templateName} onChange={(e) => setTemplateName(e.target.value)} maxLength={150} autoComplete="off" placeholder="e.g. eid_offer_2026" />
-          </div>
-          <div>
-            <label htmlFor="bc-language">Template language</label>
-            <select id="bc-language" value={language} onChange={(e) => setLanguage(e.target.value)}>
-              {LANGUAGES.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
-            </select>
-          </div>
-        </div>
-
         <div>
-          <div className="flex items-end justify-between gap-3">
-            <label htmlFor="bc-message">Message<span className="text-red-500" aria-hidden="true"> *</span></label>
-            <button type="button" onClick={insertName} className="mb-1 px-2 py-1 text-xs font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors">
-              + Customer name
-            </button>
-          </div>
-          <textarea
-            id="bc-message"
-            ref={messageBox}
-            dir="auto"
-            rows={6}
-            maxLength={MAX_MESSAGE}
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            placeholder={`Hi ${NAME_TAG}, Eid Mubarak! Enjoy 20% off any wash this week.\n\nReply STOP to opt out.`}
-          />
-          <div className="mt-1 flex justify-between gap-3 text-[11px] text-gray-500">
-            <span>Must match the approved Meta template. Use *stars* for bold.</span>
-            <span className="tabular-nums shrink-0">{message.length} / {MAX_MESSAGE}</span>
-          </div>
+          <label htmlFor="bc-template">Message<span className="text-red-500" aria-hidden="true"> *</span></label>
+          {templates.length === 0 ? (
+            <div className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm bg-gray-50 border border-gray-200 text-gray-700">
+              <span className="mr-auto">No message templates yet.</span>
+              <button type="button" onClick={onGoToTemplates} className="text-xs font-semibold underline text-[var(--primary-dark)]">
+                Write one under Message templates
+              </button>
+            </div>
+          ) : (
+            <>
+              <select id="bc-template" value={templateId} onChange={(e) => setTemplateId(e.target.value)}>
+                <option value="">Pick a message template</option>
+                {editing?.template_id && !selected && <option value={templateId}>(deleted template)</option>}
+                {templates.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name} ({(TEMPLATE_STATUS[t.status] || TEMPLATE_STATUS.draft).label})
+                  </option>
+                ))}
+              </select>
+              {selected && (approved ? (
+                <p className="mt-1 text-[11px] text-green-700 flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3 shrink-0" aria-hidden="true" /> Approved by Meta. Ready to use.
+                </p>
+              ) : (
+                <p className="mt-1 text-[11px] text-amber-700 flex items-center gap-1">
+                  <Info className="w-3 h-3 shrink-0" aria-hidden="true" /> Not approved by Meta yet. You can save a draft; scheduling needs approval.
+                </p>
+              ))}
+            </>
+          )}
         </div>
 
         <div>
@@ -284,18 +254,12 @@ export default function BroadcastComposer({ editing, sendingEnabled, onSaved, on
 
         <div>
           <h2 className="text-sm font-semibold text-gray-900 mb-2">Preview</h2>
-          <div className="bg-[#e5ddd5] p-3 min-h-[160px]">
-            {preview ? (
-              <div className="bg-white shadow-sm px-3 py-2 text-sm text-gray-900 whitespace-pre-wrap break-words max-w-[92%]" dir="auto">
-                <WhatsAppText text={preview} />
-              </div>
-            ) : (
-              <p className="text-xs text-gray-600 text-center pt-12">The message shows here as customers will see it.</p>
-            )}
-          </div>
-          {message.includes(NAME_TAG) && (
-            <p className="mt-1 text-[11px] text-gray-500">&quot;{SAMPLE_NAME}&quot; is an example. Each customer sees their own name.</p>
-          )}
+          <WhatsAppPreview
+            body={selected?.body}
+            footer={selected?.footer}
+            sampleName={selected?.sample_name}
+            emptyText="Pick a message to see it as customers will."
+          />
         </div>
       </aside>
     </form>

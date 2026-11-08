@@ -260,4 +260,20 @@ export const broadcastService = {
     update: (id, body) => api.put(API_PATHS.BROADCAST.UPDATE(id), body),
 
     remove: (id) => api.put(API_PATHS.BROADCAST.DELETE(id)),
+
+    getOptOuts: () => api.get(API_PATHS.BROADCAST.OPT_OUTS),
+
+    addOptOut: (body) => api.post(API_PATHS.BROADCAST.OPT_OUTS, body),
+
+    removeOptOut: (phone) => api.put(API_PATHS.BROADCAST.OPT_OUT_DELETE(phone)),
+
+    getTemplates: () => api.get(API_PATHS.BROADCAST.TEMPLATES),
+
+    addTemplate: (body) => api.post(API_PATHS.BROADCAST.TEMPLATE_ADD, body),
+
+    updateTemplate: (id, body) => api.put(API_PATHS.BROADCAST.TEMPLATE_UPDATE(id), body),
+
+    removeTemplate: (id) => api.put(API_PATHS.BROADCAST.TEMPLATE_DELETE(id)),
+
+    submitTemplate: (id) => api.post(API_PATHS.BROADCAST.TEMPLATE_SUBMIT(id)),
 };
