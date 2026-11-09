@@ -276,4 +276,14 @@ export const broadcastService = {
     removeTemplate: (id) => api.put(API_PATHS.BROADCAST.TEMPLATE_DELETE(id)),
 
     submitTemplate: (id) => api.post(API_PATHS.BROADCAST.TEMPLATE_SUBMIT(id)),
+
+    syncTemplates: () => api.post(API_PATHS.BROADCAST.TEMPLATE_SYNC),
+
+    sendTestTemplate: (id, body) => api.post(API_PATHS.BROADCAST.TEMPLATE_TEST(id), body),
+
+    checkConnection: () => api.post(API_PATHS.BROADCAST.SETTINGS_CHECK),
+
+    send: (id) => api.post(API_PATHS.BROADCAST.SEND(id)),
+
+    getRecipients: (id) => api.get(API_PATHS.BROADCAST.RECIPIENTS(id)),
 };

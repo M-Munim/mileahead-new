@@ -107,7 +107,10 @@ export const API_PATHS = {
     // WhatsApp broadcast (Super Admin only)
     BROADCAST: {
         SETTINGS: "/api/v1/broadcast/settings",
+        SETTINGS_CHECK: "/api/v1/broadcast/settings/check",
         AUDIENCE_PREVIEW: "/api/v1/broadcast/audience-preview",
+        SEND: (id) => `/api/v1/broadcast/send/${id}`,
+        RECIPIENTS: (id) => `/api/v1/broadcast/recipients/${id}`,
         GET_ALL: "/api/v1/broadcast/all",
         ADD: "/api/v1/broadcast/add",
         UPDATE: (id) => `/api/v1/broadcast/update/${id}`,
@@ -119,5 +122,7 @@ export const API_PATHS = {
         TEMPLATE_UPDATE: (id) => `/api/v1/broadcast/templates/update/${id}`,
         TEMPLATE_DELETE: (id) => `/api/v1/broadcast/templates/delete/${id}`,
         TEMPLATE_SUBMIT: (id) => `/api/v1/broadcast/templates/submit/${id}`,
+        TEMPLATE_SYNC: "/api/v1/broadcast/templates/sync",
+        TEMPLATE_TEST: (id) => `/api/v1/broadcast/templates/test/${id}`,
     },
 };

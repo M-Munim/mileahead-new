@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Megaphone, RefreshCw, Loader2, AlertCircle, Pencil, Trash2 } from 'lucide-react';
+import { Megaphone, RefreshCw, Loader2, AlertCircle, Pencil, Trash2, Send } from 'lucide-react';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import Toast from '../components/Toast';
@@ -17,8 +17,8 @@ import { audienceText, dateText } from '../../utils/broadcastText';
 /**
  * WhatsApp Broadcast (Super Admin): write message templates for Meta to
  * approve, pick the customers and save a broadcast, see what was sent, keep
- * the opt-out list, plus the Meta connection details. Sending stays locked on the
- * server until the Meta account is connected.
+ * the opt-out list, plus the Meta connection details. Sending works once the
+ * Meta details are saved under WhatsApp settings.
  */
 
 const TABS = [
@@ -37,8 +37,9 @@ const STATUS_PILL = {
   scheduled: 'bg-blue-100 text-blue-700',
 };
 
-// A scheduled time that has passed while sending is still locked
+// A scheduled time that has passed but the server hasn't sent yet
 const isOverdue = (b) => b.status === 'scheduled' && b.scheduled_at && new Date(b.scheduled_at).getTime() < Date.now();
+const POLL_MS = 5000; // while a broadcast is sending
 
 export default function BroadcastPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -51,6 +52,8 @@ export default function BroadcastPage() {
   const [editing, setEditing] = useState(null);
   const [formKey, setFormKey] = useState(0); // a new key empties the form
   const [pendingDelete, setPendingDelete] = useState(null);
+  const [pendingSend, setPendingSend] = useState(null);
+  const [sendingId, setSendingId] = useState(null);
   const [toast, setToast] = useState(null);
 
   const toggleSidebar = useCallback(() => setSidebarOpen((v) => !v), []);
@@ -82,12 +85,40 @@ export default function BroadcastPage() {
     return () => clearTimeout(first);
   }, [loadAll]);
 
+  // Counts rise while a broadcast goes out; refresh until it's done.
+  const anySending = broadcasts.some((b) => b.status === 'sending');
+  useEffect(() => {
+    if (!anySending) return undefined;
+    const timer = setInterval(loadAll, POLL_MS);
+    return () => clearInterval(timer);
+  }, [anySending, loadAll]);
+
   const refreshNow = async () => {
     setLoading(true);
     await loadAll();
   };
 
   const saved = broadcasts.filter((b) => OPEN_STATUSES.includes(b.status));
+  const templateOf = (b) => templates.find((t) => t.id === b.template_id);
+  const canSend = (b) => !!settings?.sending_enabled && templateOf(b)?.status === 'approved';
+
+  const confirmSend = async () => {
+    const broadcast = pendingSend;
+    if (!broadcast) return;
+    setSendingId(broadcast.id);
+    try {
+      const res = await broadcastService.send(broadcast.id);
+      setToast({ message: `"${broadcast.title}": ${res.data?.message || 'sending'}`, type: 'success' });
+      setTab('history');
+      await loadAll();
+    } catch (error) {
+      console.error('Send broadcast error:', error);
+      setToast({ message: error.message || 'Could not send.', type: 'error' });
+      await loadAll();
+    } finally {
+      setSendingId(null);
+    }
+  };
   const historyCount = broadcasts.filter((b) => HISTORY_STATUSES.includes(b.status)).length;
 
   const closeForm = () => {
@@ -224,6 +255,7 @@ export default function BroadcastPage() {
                           <td className="px-5 py-3">
                             <div className="font-medium text-gray-900">{b.title}</div>
                             <div className="text-xs text-gray-500">{b.template_name}</div>
+                            {b.last_error && <div className="mt-1 text-xs text-amber-700 max-w-xs">{b.last_error}</div>}
                           </td>
                           <td className="px-3 py-3 text-gray-700">{audienceText(b.audience)}</td>
                           <td className="px-3 py-3 text-gray-700 tabular-nums">{b.recipient_count}</td>
@@ -232,12 +264,25 @@ export default function BroadcastPage() {
                           </td>
                           <td className="px-3 py-3 text-gray-700 whitespace-nowrap">
                             {dateText(b.scheduled_at)}
-                            {isOverdue(b) && !settings?.sending_enabled && (
-                              <span className="block text-xs text-amber-700">Not sent: WhatsApp not connected yet</span>
+                            {isOverdue(b) && (
+                              <span className="block text-xs text-amber-700">
+                                {settings?.sending_enabled ? 'Due now: goes out within a minute' : 'Not sent: WhatsApp not connected yet'}
+                              </span>
                             )}
                           </td>
                           <td className="px-5 py-3">
                             <div className="flex items-center justify-end gap-1.5">
+                              {settings?.sending_enabled && (
+                                <button
+                                  type="button"
+                                  onClick={() => setPendingSend(b)}
+                                  disabled={!canSend(b) || sendingId === b.id}
+                                  title={canSend(b) ? undefined : 'Meta has not approved this message yet'}
+                                  className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-white bg-[var(--primary)] hover:bg-[var(--primary-hover)] transition-colors disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed whitespace-nowrap"
+                                >
+                                  {sendingId === b.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" /> : <Send className="w-3.5 h-3.5" aria-hidden="true" />} Send now
+                                </button>
+                              )}
                               <button type="button" onClick={() => startEdit(b)} className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors">
                                 <Pencil className="w-3.5 h-3.5" aria-hidden="true" /> Edit
                               </button>
@@ -267,7 +312,7 @@ export default function BroadcastPage() {
               />
             )}
 
-            {tab === 'history' && <BroadcastHistory broadcasts={broadcasts} loading={loading} />}
+            {tab === 'history' && <BroadcastHistory broadcasts={broadcasts} loading={loading} sendingEnabled={!!settings?.sending_enabled} />}
 
             {tab === 'optouts' && <OptOutList onToast={(message, type) => setToast({ message, type })} />}
 
@@ -300,6 +345,16 @@ export default function BroadcastPage() {
         title="Delete broadcast?"
         message={`This removes "${pendingDelete?.title}". This cannot be undone.`}
         confirmText="Delete"
+      />
+
+      <ConfirmationDialog
+        isOpen={!!pendingSend}
+        onClose={() => setPendingSend(null)}
+        onConfirm={confirmSend}
+        type="warning"
+        title="Send this broadcast now?"
+        message={`"${pendingSend?.title}" goes to about ${pendingSend?.recipient_count ?? 0} customers on WhatsApp right away. This can't be undone.`}
+        confirmText="Send now"
       />
 
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}

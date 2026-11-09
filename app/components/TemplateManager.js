@@ -1,7 +1,7 @@
 'use client';
 
-import { useRef, useState } from 'react';
-import { Loader2, AlertCircle, Info, Lock, Pencil, Trash2, Send, X, FileText, Save } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Loader2, AlertCircle, Info, Lock, Pencil, Trash2, Send, X, FileText, Save, RefreshCw, Smartphone } from 'lucide-react';
 import ConfirmationDialog from './ConfirmationDialog';
 import WhatsAppPreview from './WhatsAppPreview';
 import { broadcastService } from '../../utils/axiosInstance';
@@ -202,11 +202,107 @@ function TemplateForm({ editing, onSaved, onCancel }) {
   );
 }
 
+// The last number a test went to, for the next test (this browser only)
+const TEST_NUMBER_KEY = 'mt.broadcast.testNumber';
+const readTestNumber = () => {
+  try {
+    return localStorage.getItem(TEST_NUMBER_KEY) || '';
+  } catch {
+    return '';
+  }
+};
+
+/** Sends an approved template to one phone, to see it for real. */
+function TestSend({ template, onClose, onToast }) {
+  const [phone, setPhone] = useState(readTestNumber);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState('');
+
+  const send = async (e) => {
+    e.preventDefault();
+    if (sending) return;
+    if (!phone.trim()) {
+      setError('Enter the WhatsApp number, with the country code.');
+      return;
+    }
+    setSending(true);
+    setError('');
+    try {
+      const res = await broadcastService.sendTestTemplate(template.id, { phone: phone.trim() });
+      try { localStorage.setItem(TEST_NUMBER_KEY, phone.trim()); } catch { /* private mode */ }
+      onToast(res.data?.message || 'Test sent', 'success');
+      onClose();
+    } catch (err) {
+      console.error('Test send error:', err);
+      setError(errorText(err, 'Could not send the test.'));
+      setSending(false);
+    }
+  };
+
+  return (
+    <form onSubmit={send} noValidate className="mx-5 mt-4 p-4 border border-[var(--primary)]/30 bg-[var(--primary-light)]">
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-sm text-gray-800">
+          Send <b className="font-mono">{template.name}</b> to one phone to see it as customers will.
+        </p>
+        <button type="button" onClick={onClose} aria-label="Close" className="text-gray-500 hover:text-gray-800">
+          <X className="w-4 h-4" aria-hidden="true" />
+        </button>
+      </div>
+      <fieldset disabled={sending} className="mt-3 flex flex-col sm:flex-row gap-2 sm:items-end">
+        <div className="flex-1">
+          <label htmlFor="tpl-test-phone">WhatsApp number</label>
+          <input id="tpl-test-phone" type="tel" dir="ltr" autoComplete="off" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+974 5555 0000" />
+        </div>
+        <button type="submit" className="px-4 py-2 text-sm font-medium bg-[var(--primary)] text-white hover:bg-[var(--primary-hover)] transition-colors flex items-center justify-center gap-2 disabled:opacity-50">
+          {sending ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : <Send className="w-4 h-4" aria-hidden="true" />} Send test
+        </button>
+      </fieldset>
+      <p className="mt-2 text-[11px] text-gray-600">
+        The customer name shows as &quot;{template.sample_name || SAMPLE_NAME}&quot;. With Meta&apos;s test number, only numbers on its allowed list get it.
+      </p>
+      {error && (
+        <div className="mt-2 flex items-start gap-2 px-3 py-2 text-xs bg-red-50 border border-red-200 text-red-700" role="alert">
+          <AlertCircle className="w-4 h-4 shrink-0 mt-px" aria-hidden="true" />
+          <span>{error}</span>
+        </div>
+      )}
+    </form>
+  );
+}
+
 export default function TemplateManager({ templates, loading, sendingEnabled, onChanged, onToast }) {
   const [editing, setEditing] = useState(null);
   const [formKey, setFormKey] = useState(0);
   const [pendingDelete, setPendingDelete] = useState(null);
   const [submittingId, setSubmittingId] = useState(null);
+  const [syncing, setSyncing] = useState(false);
+  const [testing, setTesting] = useState(null);
+  const autoSynced = useRef(false);
+  const anyPending = templates.some((t) => t.status === 'pending');
+
+  const sync = async (quiet = false) => {
+    setSyncing(true);
+    try {
+      const res = await broadcastService.syncTemplates();
+      if (quiet && /up to date/i.test(res.data?.message || '')) return;
+      await onChanged(res.data?.message || 'Checked with Meta');
+    } catch (err) {
+      console.error('Sync templates error:', err);
+      if (!quiet) onToast(errorText(err, 'Could not check with Meta.'), 'error');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  // Templates in review: ask Meta once when the tab opens, in case the
+  // webhook is not set up (or missed one).
+  useEffect(() => {
+    if (!sendingEnabled || !anyPending || autoSynced.current) return;
+    autoSynced.current = true;
+    sync(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sendingEnabled, anyPending]);
 
   const closeForm = () => {
     setEditing(null);
@@ -227,8 +323,8 @@ export default function TemplateManager({ templates, loading, sendingEnabled, on
   const submit = async (tpl) => {
     setSubmittingId(tpl.id);
     try {
-      await broadcastService.submitTemplate(tpl.id);
-      await onChanged(`"${tpl.name}" sent to Meta for review`);
+      const res = await broadcastService.submitTemplate(tpl.id);
+      await onChanged(`"${tpl.name}": ${res.data?.message || 'sent to Meta for review'}`);
     } catch (err) {
       console.error('Submit template error:', err);
       onToast(errorText(err, 'Could not send it to Meta.'), 'error');
@@ -259,7 +355,19 @@ export default function TemplateManager({ templates, loading, sendingEnabled, on
           Approval usually takes from a few minutes to 24 hours, sometimes 1–3 working days.
           {!sendingEnabled && ' Sending to Meta unlocks once the Meta account is connected.'}
         </span>
+        {sendingEnabled && templates.some((t) => t.submitted_at) && (
+          <button
+            type="button"
+            onClick={() => sync(false)}
+            disabled={syncing}
+            className="ml-auto shrink-0 flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-blue-900 bg-white border border-blue-200 hover:bg-blue-100 transition-colors disabled:opacity-60 whitespace-nowrap"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} aria-hidden="true" /> Check Meta status
+          </button>
+        )}
       </div>
+
+      {testing && <TestSend key={testing.id} template={testing} onClose={() => setTesting(null)} onToast={onToast} />}
 
       <TemplateForm
         key={editing ? `edit-${editing.id}` : `new-${formKey}`}
@@ -320,7 +428,17 @@ export default function TemplateManager({ templates, loading, sendingEnabled, on
                             title={sendingEnabled ? undefined : 'Connect the Meta account first'}
                             className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-white bg-[var(--primary)] hover:bg-[var(--primary-hover)] transition-colors disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed whitespace-nowrap"
                           >
-                            {sendingEnabled ? <Send className="w-3.5 h-3.5" aria-hidden="true" /> : <Lock className="w-3.5 h-3.5" aria-hidden="true" />} Send to Meta
+                            {submittingId === t.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
+                              : sendingEnabled ? <Send className="w-3.5 h-3.5" aria-hidden="true" /> : <Lock className="w-3.5 h-3.5" aria-hidden="true" />} Send to Meta
+                          </button>
+                        )}
+                        {t.status === 'approved' && sendingEnabled && (
+                          <button
+                            type="button"
+                            onClick={() => setTesting(t)}
+                            className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors whitespace-nowrap"
+                          >
+                            <Smartphone className="w-3.5 h-3.5" aria-hidden="true" /> Send test
                           </button>
                         )}
                         <button
