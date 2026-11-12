@@ -102,6 +102,7 @@ const AR = {
   'Drive to the wash bay when your number is called.': 'توجّه إلى مسار الغسيل عند نداء رقمك.',
   'Starting now': 'نبدأ الآن', 'In': 'بعد', 'Start new order': 'طلب جديد', 'This screen resets in': 'تعود الشاشة للبداية بعد', 'seconds': 'ثانية',
   'Could not save your order. Please ask our staff for help.': 'تعذر حفظ طلبك. يرجى طلب المساعدة من الموظفين.',
+  'This car already has an order today. Please ask our staff at the counter.': 'هذه السيارة لديها طلب اليوم بالفعل. يرجى مراجعة الموظفين في الكاونتر.',
   'Placing your order…': 'جارٍ إرسال طلبك…',
   'Enter a valid mobile number': 'أدخل رقم جوال صحيح',
   'Still needed:': 'مطلوب أيضاً:', 'Choose a service': 'اختر خدمة', 'Choose your car type': 'اختر نوع السيارة',
@@ -291,7 +292,9 @@ export default function KioskPage() {
     } catch (error) {
       console.error('Kiosk order error:', error);
       // 401/403: the server needs a login to save orders. Staff log this screen in once.
-      setSaveError(error?.status === 401 || error?.status === 403 ? 'login' : true);
+      // 409 duplicate_order: this plate already has an open order (no double entry).
+      setSaveError(error?.status === 401 || error?.status === 403 ? 'login'
+        : error?.status === 409 && error?.data?.code === 'duplicate_order' ? 'duplicate' : true);
     } finally {
       setPlacing(false);
     }
@@ -779,7 +782,9 @@ export default function KioskPage() {
                 <p className="mt-3 flex items-start gap-2 text-sm text-red-700 bg-red-50 border border-red-200 px-3 py-2" role="alert">
                   <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" aria-hidden="true" />
                   <span>
-                    {t('Could not save your order. Please ask our staff for help.')}
+                    {saveError === 'duplicate'
+                      ? t('This car already has an order today. Please ask our staff at the counter.')
+                      : t('Could not save your order. Please ask our staff for help.')}
                     {saveError === 'login' && (
                       <>
                         {' '}

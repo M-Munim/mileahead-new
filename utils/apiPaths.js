@@ -125,4 +125,50 @@ export const API_PATHS = {
         TEMPLATE_SYNC: "/api/v1/broadcast/templates/sync",
         TEMPLATE_TEST: (id) => `/api/v1/broadcast/templates/test/${id}`,
     },
+
+    // Inventory: wash supplies and products for sale
+    INVENTORY: {
+        ITEMS: "/api/v1/inventory/items",
+        ITEM_ADD: "/api/v1/inventory/items/add",
+        ITEM_UPDATE: (id) => `/api/v1/inventory/items/update/${id}`,
+        ITEM_DELETE: (id) => `/api/v1/inventory/items/delete/${id}`,
+        MOVEMENTS: "/api/v1/inventory/movements",
+        MOVEMENT_ADD: "/api/v1/inventory/movements/add",
+        SUMMARY: "/api/v1/inventory/summary",
+        CONSUMPTION: "/api/v1/inventory/consumption",
+        MACHINERY: "/api/v1/inventory/machinery",
+        MACHINE_ADD: "/api/v1/inventory/machinery/add",
+        MACHINE_UPDATE: (id) => `/api/v1/inventory/machinery/update/${id}`,
+        MACHINE_DELETE: (id) => `/api/v1/inventory/machinery/delete/${id}`,
+    },
+
+    // Customers + vehicles (job cards link to these)
+    CUSTOMERS: {
+        SEARCH: "/api/v1/customers/search",
+        ADD: "/api/v1/customers/add",
+        ONE: (id) => `/api/v1/customers/${id}`,
+        UPDATE: (id) => `/api/v1/customers/update/${id}`,
+        VEHICLE_ADD: (id) => `/api/v1/customers/${id}/vehicles/add`,
+        VEHICLE_UPDATE: (id) => `/api/v1/customers/vehicles/update/${id}`,
+    },
+
+    // Job cards: the work order for one visit
+    JOB_CARDS: {
+        GET_ALL: "/api/v1/job-cards",
+        ONE: (id) => `/api/v1/job-cards/${id}`,
+        ADD: "/api/v1/job-cards/add",
+        UPDATE: (id) => `/api/v1/job-cards/update/${id}`,
+        STATUS: (id) => `/api/v1/job-cards/status/${id}`,
+        TECHNICIANS: "/api/v1/job-cards/technicians",
+    },
+
+    // Running costs: bills, rent, salaries (Super Admin only)
+    EXPENSES: {
+        GET_ALL: "/api/v1/expenses",
+        SUMMARY: "/api/v1/expenses/summary",
+        BILL: (id) => `/api/v1/expenses/bill/${id}`,
+        ADD: "/api/v1/expenses/add",
+        UPDATE: (id) => `/api/v1/expenses/update/${id}`,
+        DELETE: (id) => `/api/v1/expenses/delete/${id}`,
+    },
 };

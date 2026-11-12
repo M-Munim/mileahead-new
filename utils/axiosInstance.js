@@ -287,3 +287,88 @@ export const broadcastService = {
 
     getRecipients: (id) => api.get(API_PATHS.BROADCAST.RECIPIENTS(id)),
 };
+
+// ---------- INVENTORY ----------
+export const inventoryService = {
+    getItems: () => api.get(API_PATHS.INVENTORY.ITEMS),
+
+    addItem: (body) => api.post(API_PATHS.INVENTORY.ITEM_ADD, body),
+
+    updateItem: (id, body) => api.put(API_PATHS.INVENTORY.ITEM_UPDATE(id), body),
+
+    removeItem: (id, reason) => api.put(API_PATHS.INVENTORY.ITEM_DELETE(id), { reason }),
+
+    /** params: { item_id, type, from, to, page, limit } */
+    getMovements: (params) => api.get(API_PATHS.INVENTORY.MOVEMENTS, { params }),
+
+    /** body: { item_id, type: in|use|sell|adjust, quantity | counted, unit_price, note } */
+    addMovement: (body) => api.post(API_PATHS.INVENTORY.MOVEMENT_ADD, body),
+
+    getSummary: (params) => api.get(API_PATHS.INVENTORY.SUMMARY, { params }),
+
+    /** params: { from, to } (both required) */
+    getConsumption: (params) => api.get(API_PATHS.INVENTORY.CONSUMPTION, { params }),
+
+    getMachinery: () => api.get(API_PATHS.INVENTORY.MACHINERY),
+
+    addMachine: (body) => api.post(API_PATHS.INVENTORY.MACHINE_ADD, body),
+
+    updateMachine: (id, body) => api.put(API_PATHS.INVENTORY.MACHINE_UPDATE(id), body),
+
+    removeMachine: (id, reason) => api.put(API_PATHS.INVENTORY.MACHINE_DELETE(id), { reason }),
+};
+
+// ---------- CUSTOMERS + VEHICLES (job cards) ----------
+export const walkInCustomerService = {
+    /** q: phone, plate or name → { customers, past_orders } */
+    search: (q) => api.get(API_PATHS.CUSTOMERS.SEARCH, { params: { q } }),
+
+    /** body: { name, phone, email?, notes?, vehicle?: { plate, vehicle_type, make, model, color, year } } */
+    add: (body) => api.post(API_PATHS.CUSTOMERS.ADD, body),
+
+    getOne: (id) => api.get(API_PATHS.CUSTOMERS.ONE(id)),
+
+    update: (id, body) => api.put(API_PATHS.CUSTOMERS.UPDATE(id), body),
+
+    addVehicle: (customerId, body) => api.post(API_PATHS.CUSTOMERS.VEHICLE_ADD(customerId), body),
+
+    updateVehicle: (id, body) => api.put(API_PATHS.CUSTOMERS.VEHICLE_UPDATE(id), body),
+};
+
+// ---------- JOB CARDS ----------
+export const jobCardService = {
+    /** params: { status ('active' or one status), search, page, limit } */
+    getAll: (params) => api.get(API_PATHS.JOB_CARDS.GET_ALL, { params }),
+
+    getOne: (id) => api.get(API_PATHS.JOB_CARDS.ONE(id)),
+
+    add: (body) => api.post(API_PATHS.JOB_CARDS.ADD, body),
+
+    update: (id, body) => api.put(API_PATHS.JOB_CARDS.UPDATE(id), body),
+
+    /** body: { status, note?, technician? } */
+    setStatus: (id, body) => api.post(API_PATHS.JOB_CARDS.STATUS(id), body),
+
+    technicians: () => api.get(API_PATHS.JOB_CARDS.TECHNICIANS),
+};
+
+// ---------- EXPENSES (Super Admin) ----------
+// add / update take a FormData (optional "bill" file). Content-Type is cleared
+// so the browser sets multipart/form-data with the right boundary.
+const MULTIPART = { headers: { 'Content-Type': undefined } };
+
+export const expenseService = {
+    /** params: { type, from, to, search, page, limit } */
+    getAll: (params) => api.get(API_PATHS.EXPENSES.GET_ALL, { params }),
+
+    getSummary: (params) => api.get(API_PATHS.EXPENSES.SUMMARY, { params }),
+
+    /** The bill file as a Blob (it needs the login, so it can't be a plain link). */
+    getBill: (id) => api.get(API_PATHS.EXPENSES.BILL(id), { responseType: 'blob', timeout: 60000 }),
+
+    add: (formData) => api.post(API_PATHS.EXPENSES.ADD, formData, { ...MULTIPART, timeout: 60000 }),
+
+    update: (id, formData) => api.put(API_PATHS.EXPENSES.UPDATE(id), formData, { ...MULTIPART, timeout: 60000 }),
+
+    remove: (id, reason) => api.put(API_PATHS.EXPENSES.DELETE(id), { reason }),
+};

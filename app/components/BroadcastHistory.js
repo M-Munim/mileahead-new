@@ -152,7 +152,9 @@ export default function BroadcastHistory({ broadcasts, loading, sendingEnabled }
                     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold capitalize ${STATUS_PILL[b.status]}`}>
                       {b.status === 'sending' && <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" />}{b.status}
                     </span>
-                    {b.last_error && <span className="block mt-1 text-xs text-red-700 max-w-[220px]">{b.last_error}</span>}
+                    {b.last_error && (
+                      <span className={`block mt-1 text-xs max-w-[220px] ${b.status === 'sending' ? 'text-amber-700' : 'text-red-700'}`}>{b.last_error}</span>
+                    )}
                   </td>
                 </tr>
                 {open && (

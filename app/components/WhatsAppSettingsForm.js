@@ -104,7 +104,7 @@ export default function WhatsAppSettingsForm({ settings, onSaved }) {
       const d = res.data?.data || {};
       setCheck({
         ok: true,
-        text: `Connected: ${d.verified_name || 'WhatsApp number'} ${d.display_phone_number ? `(${d.display_phone_number})` : ''}${d.quality_rating ? ` · quality ${d.quality_rating.toLowerCase()}` : ''}`,
+        text: `Connected: ${d.verified_name || 'WhatsApp number'} ${d.display_phone_number ? `(${d.display_phone_number})` : ''}${d.quality_rating ? ` · quality ${d.quality_rating.toLowerCase()}` : ''}${d.business_account_name ? ` · account "${d.business_account_name}"` : ''}${d.test_account ? '. This is Meta\'s free test account: it can send Meta\'s sample templates (like hello_world) but not your own until the real number is connected.' : ''}`,
       });
     } catch (err) {
       setCheck({ ok: false, text: err?.message || 'Could not reach Meta.' });
@@ -165,7 +165,7 @@ export default function WhatsAppSettingsForm({ settings, onSaved }) {
         <div>
           <label htmlFor="wa-phone-id">Phone Number ID</label>
           <input id="wa-phone-id" inputMode="numeric" autoComplete="off" value={phoneId} onChange={(e) => setPhoneId(e.target.value)} placeholder="e.g. 109876543210987" />
-          <p className="mt-1 text-[11px] text-gray-500">Both IDs are on the WhatsApp &gt; API Setup page in Meta.</p>
+          <p className="mt-1 text-[11px] text-gray-500">Both IDs are on the WhatsApp &gt; API Setup page in Meta. Meta may call the Business Account ID &quot;Messaging account ID&quot;.</p>
         </div>
         <div>
           <label htmlFor="wa-display-number">Company WhatsApp number</label>

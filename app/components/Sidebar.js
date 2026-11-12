@@ -1,6 +1,6 @@
 'use client';
 
-import { Droplets, Users, MonitorSmartphone, Tv, MonitorPlay, ClipboardCheck, Megaphone, ExternalLink, X, ChevronRight } from 'lucide-react';
+import { Droplets, Users, MonitorSmartphone, Tv, MonitorPlay, ClipboardCheck, Megaphone, Boxes, Receipt, ClipboardList, ExternalLink, X, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect } from 'react';
@@ -13,10 +13,16 @@ import { useAuth } from '../contexts/AuthContext';
 const menuItems = [
   { icon: Droplets, label: 'Car Wash Orders', href: '/orders' },
   { icon: Users, label: 'Customer Data', href: '/customer-data' },
+  // Work orders for a visit: customer + vehicle, checks, services, technician, status.
+  { icon: ClipboardList, label: 'Job Cards', href: '/job-cards' },
   // Daily closing report: cash / card / online collected, export, print, WhatsApp.
   { icon: ClipboardCheck, label: 'Day Close', href: '/day-close' },
   // Videos / pictures the queue screen plays between queue views.
   { icon: MonitorPlay, label: 'Screen Ads', href: '/screen-ads' },
+  // Wash supplies and products for sale: stock in / use / sale / count.
+  { icon: Boxes, label: 'Inventory', href: '/inventory', permission: 'canManageInventory' },
+  // Bills, rent, salaries with the bill file (Super Admin only: salaries are private).
+  { icon: Receipt, label: 'Expenses', href: '/expenses', permission: 'canManageExpenses' },
   // WhatsApp messages to many customers (Super Admin only).
   { icon: Megaphone, label: 'WhatsApp Broadcast', href: '/broadcast', permission: 'canManageBroadcasts' },
   // Customer self-service screen — opens in its own tab (full screen, no sidebar).

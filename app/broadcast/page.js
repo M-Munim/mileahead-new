@@ -222,6 +222,8 @@ export default function BroadcastPage() {
                 editing={editing}
                 templates={templates}
                 sendingEnabled={!!settings?.sending_enabled}
+                dailyLimit={settings?.daily_limit}
+                sentLast24h={settings?.sent_last_24h}
                 onSaved={handleSaved}
                 onCancelEdit={closeForm}
                 onGoToTemplates={() => setTab('templates')}

@@ -31,7 +31,7 @@ const toLocalInput = (iso) => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };
 
-export default function BroadcastComposer({ editing, templates = [], sendingEnabled, onSaved, onCancelEdit, onGoToTemplates }) {
+export default function BroadcastComposer({ editing, templates = [], sendingEnabled, dailyLimit, sentLast24h, onSaved, onCancelEdit, onGoToTemplates }) {
   const [title, setTitle] = useState(editing?.title || '');
   const [templateId, setTemplateId] = useState(editing?.template_id ? String(editing.template_id) : '');
   const [type, setType] = useState(editing?.audience?.type || 'all');
@@ -224,6 +224,12 @@ export default function BroadcastComposer({ editing, templates = [], sendingEnab
               ? 'A scheduled broadcast goes out by itself at its time. To send now, save it and press Send now under Drafts & scheduled.'
               : 'Connect the Meta account first. Until then nothing is sent to customers, including scheduled broadcasts.'}
           </p>
+          {sendingEnabled && Number(dailyLimit) > 0 && (
+            <p className="mt-1 text-[11px] text-gray-500">
+              Meta allows {dailyLimit} customers a day for now ({Number(sentLast24h) || 0} messaged in the last 24 hours).
+              A bigger audience is sent in parts: the rest go out by themselves the next day.
+            </p>
+          )}
         </div>
       </fieldset>
 
