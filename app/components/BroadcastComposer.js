@@ -264,6 +264,7 @@ export default function BroadcastComposer({ editing, templates = [], sendingEnab
             body={selected?.body}
             footer={selected?.footer}
             sampleName={selected?.sample_name}
+            buttonText={selected?.button_text}
             emptyText="Pick a message to see it as customers will."
           />
         </div>

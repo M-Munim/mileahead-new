@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Loader2, AlertCircle, Info, Lock, Pencil, Trash2, Send, X, FileText, Save, RefreshCw, Smartphone } from 'lucide-react';
+import { Loader2, AlertCircle, Info, Lock, Pencil, Trash2, Send, X, FileText, Save, RefreshCw, Smartphone, MessageCircle } from 'lucide-react';
 import ConfirmationDialog from './ConfirmationDialog';
 import WhatsAppPreview from './WhatsAppPreview';
 import { broadcastService } from '../../utils/axiosInstance';
@@ -15,7 +15,13 @@ import {
   TEMPLATE_CATEGORIES,
   TEMPLATE_STATUS,
   templateTextProblem,
+  buttonProblem,
   dateText,
+  MAX_BUTTON_TEXT,
+  CHAT_BUTTON_TEXT,
+  CHAT_NUMBER,
+  CHAT_NUMBER_TEXT,
+  chatLink,
 } from '../../utils/broadcastText';
 
 /**
@@ -39,6 +45,8 @@ function TemplateForm({ editing, onSaved, onCancel }) {
   const [body, setBody] = useState(editing?.body || '');
   const [footer, setFooter] = useState(editing?.footer || '');
   const [sampleName, setSampleName] = useState(editing?.sample_name || '');
+  const [buttonText, setButtonText] = useState(editing?.button_text || '');
+  const [buttonUrl, setButtonUrl] = useState(editing?.button_url || '');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const bodyBox = useRef(null);
@@ -56,7 +64,7 @@ function TemplateForm({ editing, onSaved, onCancel }) {
     if (saving) return;
     const problem = !TEMPLATE_NAME.test(name.trim())
       ? 'Give the template a name: lowercase letters, numbers and _ only (e.g. eid_offer_2026).'
-      : templateTextProblem(body, footer);
+      : templateTextProblem(body, footer) || buttonProblem(buttonText, buttonUrl);
     setError(problem);
     if (problem) return;
 
@@ -68,6 +76,8 @@ function TemplateForm({ editing, onSaved, onCancel }) {
       body: body.trim(),
       footer: footer.trim(),
       sample_name: sampleName.trim(),
+      button_text: buttonText.trim(),
+      button_url: buttonUrl.trim(),
     };
     try {
       let res;
@@ -181,6 +191,40 @@ function TemplateForm({ editing, onSaved, onCancel }) {
           </div>
         </div>
 
+        <div className="border border-gray-200 p-3 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-sm font-medium text-gray-700">Button <span className="text-gray-400 font-normal">(optional)</span></span>
+            {buttonText || buttonUrl ? (
+              <button type="button" onClick={() => { setButtonText(''); setButtonUrl(''); }} className="text-xs font-medium text-red-600 hover:underline">
+                Remove button
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => { setButtonText(CHAT_BUTTON_TEXT); setButtonUrl(chatLink(CHAT_NUMBER)); }}
+                className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-white bg-[#25D366] hover:bg-[#1ebe5a]"
+              >
+                <MessageCircle className="w-3.5 h-3.5" aria-hidden="true" /> Add &quot;{CHAT_BUTTON_TEXT}&quot; ({CHAT_NUMBER_TEXT})
+              </button>
+            )}
+          </div>
+          {(buttonText || buttonUrl) && (
+            <div className="grid grid-cols-1 sm:grid-cols-[180px_1fr] gap-3">
+              <div>
+                <label htmlFor="tpl-btn-text">Button text</label>
+                <input id="tpl-btn-text" dir="auto" maxLength={MAX_BUTTON_TEXT} value={buttonText} onChange={(e) => setButtonText(e.target.value)} placeholder={CHAT_BUTTON_TEXT} />
+              </div>
+              <div>
+                <label htmlFor="tpl-btn-url">Opens this link</label>
+                <input id="tpl-btn-url" dir="ltr" value={buttonUrl} onChange={(e) => setButtonUrl(e.target.value.trim())} placeholder={chatLink(CHAT_NUMBER)} />
+              </div>
+            </div>
+          )}
+          <p className="text-[11px] text-gray-500">
+            Customers can&apos;t reply to the broadcast number in the dashboard, so this button sends them to the WhatsApp the team answers.
+          </p>
+        </div>
+
         {error && (
           <div className="flex items-start gap-2 px-3 py-2 text-xs bg-red-50 border border-red-200 text-red-700" role="alert">
             <AlertCircle className="w-4 h-4 shrink-0 mt-px" aria-hidden="true" />
@@ -196,7 +240,7 @@ function TemplateForm({ editing, onSaved, onCancel }) {
 
       <aside className="min-w-0">
         <h2 className="text-sm font-semibold text-gray-900 mb-2">Preview</h2>
-        <WhatsAppPreview body={body} footer={footer} sampleName={sampleName} />
+        <WhatsAppPreview body={body} footer={footer} sampleName={sampleName} buttonText={buttonText} />
       </aside>
     </form>
   );

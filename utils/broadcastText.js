@@ -59,3 +59,24 @@ export function templateTextProblem(body, footer) {
   if (/\{\{|\}\}/.test(foot)) return 'The footer cannot have the customer name.';
   return '';
 }
+
+// ---- optional link button on a template ----
+export const MAX_BUTTON_TEXT = 25; // Meta's limit
+export const CHAT_BUTTON_TEXT = 'Chat with us';
+/** The WhatsApp the team answers on the phone (client, Nov 2026). */
+export const CHAT_NUMBER = '97451701605';
+export const CHAT_NUMBER_TEXT = '+974 5170 1605';
+export const chatLink = (digits) => `https://wa.me/${digits}`;
+
+/** Why Meta would refuse this button, or '' (none at all is fine). */
+export function buttonProblem(text, url) {
+  const t = String(text || '').trim();
+  const u = String(url || '').trim();
+  if (!t && !u) return '';
+  if (!t) return 'Write the button text, or remove the button.';
+  if (!u) return 'Add the link the button opens, or remove the button.';
+  if (t.length > MAX_BUTTON_TEXT) return `Keep the button text under ${MAX_BUTTON_TEXT} characters.`;
+  if (/\{\{|\}\}/.test(t) || /\{\{|\}\}/.test(u)) return 'The button cannot have the customer name.';
+  if (!/^https:\/\/[^\s/]+\.[^\s]+$/.test(u)) return 'The button link must be a full https:// address, e.g. https://wa.me/97451701605';
+  return '';
+}
