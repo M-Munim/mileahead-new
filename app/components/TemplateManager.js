@@ -19,9 +19,8 @@ import {
   dateText,
   MAX_BUTTON_TEXT,
   CHAT_BUTTON_TEXT,
-  CHAT_NUMBER,
   CHAT_NUMBER_TEXT,
-  chatLink,
+  CHAT_LINK,
 } from '../../utils/broadcastText';
 
 /**
@@ -201,7 +200,7 @@ function TemplateForm({ editing, onSaved, onCancel }) {
             ) : (
               <button
                 type="button"
-                onClick={() => { setButtonText(CHAT_BUTTON_TEXT); setButtonUrl(chatLink(CHAT_NUMBER)); }}
+                onClick={() => { setButtonText(CHAT_BUTTON_TEXT); setButtonUrl(CHAT_LINK); }}
                 className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-white bg-[#25D366] hover:bg-[#1ebe5a]"
               >
                 <MessageCircle className="w-3.5 h-3.5" aria-hidden="true" /> Add &quot;{CHAT_BUTTON_TEXT}&quot; ({CHAT_NUMBER_TEXT})
@@ -216,7 +215,7 @@ function TemplateForm({ editing, onSaved, onCancel }) {
               </div>
               <div>
                 <label htmlFor="tpl-btn-url">Opens this link</label>
-                <input id="tpl-btn-url" dir="ltr" value={buttonUrl} onChange={(e) => setButtonUrl(e.target.value.trim())} placeholder={chatLink(CHAT_NUMBER)} />
+                <input id="tpl-btn-url" dir="ltr" value={buttonUrl} onChange={(e) => setButtonUrl(e.target.value.trim())} placeholder={CHAT_LINK} />
               </div>
             </div>
           )}

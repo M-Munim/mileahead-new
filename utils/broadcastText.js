@@ -66,7 +66,12 @@ export const CHAT_BUTTON_TEXT = 'Chat with us';
 /** The WhatsApp the team answers on the phone (client, Nov 2026). */
 export const CHAT_NUMBER = '97451701605';
 export const CHAT_NUMBER_TEXT = '+974 5170 1605';
-export const chatLink = (digits) => `https://wa.me/${digits}`;
+/**
+ * Meta refuses wa.me links in template buttons, so the button opens /chat on
+ * the live dashboard, which forwards to https://wa.me/97451701605 (next.config).
+ */
+export const CHAT_LINK = 'https://app-magic.milesahead.services/chat';
+export const isWhatsAppLink = (url) => /^https?:\/\/(wa\.me|api\.whatsapp\.com|(www\.)?whatsapp\.com)\b/i.test(String(url || '').trim());
 
 /** Why Meta would refuse this button, or '' (none at all is fine). */
 export function buttonProblem(text, url) {
@@ -77,6 +82,7 @@ export function buttonProblem(text, url) {
   if (!u) return 'Add the link the button opens, or remove the button.';
   if (t.length > MAX_BUTTON_TEXT) return `Keep the button text under ${MAX_BUTTON_TEXT} characters.`;
   if (/\{\{|\}\}/.test(t) || /\{\{|\}\}/.test(u)) return 'The button cannot have the customer name.';
-  if (!/^https:\/\/[^\s/]+\.[^\s]+$/.test(u)) return 'The button link must be a full https:// address, e.g. https://wa.me/97451701605';
+  if (!/^https:\/\/[^\s/]+\.[^\s]+$/.test(u)) return `The button link must be a full https:// address, e.g. ${CHAT_LINK}`;
+  if (isWhatsAppLink(u)) return `Meta does not allow WhatsApp links (wa.me) in buttons. Use ${CHAT_LINK} instead, it opens the same chat.`;
   return '';
 }

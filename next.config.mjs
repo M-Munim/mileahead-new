@@ -22,6 +22,9 @@ const nextConfig = {
     ]).concat(
       // Demo login only — no account sign-up at this stage.
       { source: '/auth/signup', destination: '/auth/login', permanent: false },
+      // "Chat with us" button on WhatsApp templates. Meta refuses wa.me links
+      // in buttons, so the button opens this address and it forwards to WhatsApp.
+      { source: '/chat', destination: 'https://wa.me/97451701605', permanent: false },
     ),
   headers: async () => [
     {
