@@ -24,7 +24,8 @@ export const ACTIONS = {
   open: [['in_progress', 'Start work', 'primary'], ['cancelled', 'Cancel job', 'danger']],
   in_progress: [['quality_check', 'Send to quality check', 'primary'], ['cancelled', 'Cancel job', 'danger']],
   quality_check: [['ready', 'Passed: ready for delivery', 'primary'], ['in_progress', 'Failed: back to work', 'warn']],
-  ready: [['delivered', 'Delivered to customer', 'primary'], ['in_progress', 'Back to work', 'warn']],
+  // 'invoice' isn't a status: it opens the invoice form (order + payment), which closes the job as Delivered
+  ready: [['invoice', 'Invoice and deliver', 'primary'], ['in_progress', 'Back to work', 'warn']],
   delivered: [],
   cancelled: [],
 };
@@ -45,6 +46,34 @@ export const FUEL_LEVELS = [
 export const FUEL_LABEL = { empty: 'Empty', quarter: '1/4', half: '1/2', three_quarters: '3/4', full: 'Full' };
 
 export const OPEN_STATUSES = ['open', 'in_progress', 'quality_check', 'ready'];
+
+/** Quality check before "ready". Same keys as the server (QC_ITEMS in jobCardService.js). */
+export const QC_ITEMS = [
+  ['services_done', 'All requested services done'],
+  ['exterior_clean', 'Exterior clean, no soap or water marks'],
+  ['interior_clean', 'Interior clean and vacuumed'],
+  ['glass_clean', 'Windows and mirrors clean'],
+  ['tyres_rims', 'Tyres and rims clean'],
+  ['no_new_damage', 'No new damage (checked against check-in)'],
+  ['items_returned', "Customer's items and mats back in place"],
+];
+
+export const MAX_PHOTOS = 30;
+export const PHOTOS_PER_UPLOAD = 6;
+
+/** WhatsApp message: the car is ready to collect. */
+export function readyMessage(job) {
+  const name = job.customer?.name ? ` ${job.customer.name}` : '';
+  return [
+    '*Magic Track*',
+    '',
+    `Hi${name}, your car${job.vehicle?.plate ? ` (${job.vehicle.plate})` : ''} is ready for collection.`,
+    `Job card: ${job.job_number}`,
+    job.total ? `Amount: QAR ${Number(job.total).toLocaleString('en-US')}` : null,
+    '',
+    'Thank you for choosing Magic Track.',
+  ].filter((l) => l !== null).join('\n');
+}
 
 /** Every service on the price list, for the job card's service picker. */
 export const SERVICE_OPTIONS = [

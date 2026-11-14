@@ -1,12 +1,18 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { X, Loader2, AlertCircle, Pencil, Save, Printer, Clock, User, Car, Gauge, Fuel, Wrench } from 'lucide-react';
+import { X, Loader2, AlertCircle, Pencil, Save, Printer, Clock, User, Car, Gauge, Fuel, Wrench, ShieldCheck } from 'lucide-react';
 import { useFocusTrap } from '@/app/hooks/useFocusTrap';
 import { jobCardService } from '../../utils/axiosInstance';
-import { STATUS_LABEL, STATUS_PILL, ACTIONS, NOTE_FOR, FUEL_LABEL, OPEN_STATUSES, vehicleText, phoneText } from '../../utils/jobCards';
+import {
+  STATUS_LABEL, STATUS_PILL, ACTIONS, NOTE_FOR, FUEL_LABEL, OPEN_STATUSES, QC_ITEMS,
+  vehicleText, phoneText, readyMessage,
+} from '../../utils/jobCards';
 import { qar } from '../../utils/inventory';
 import JobDetailsForm, { detailsFrom, detailsBody } from './JobDetailsForm';
+import JobCardPhotos from './JobCardPhotos';
+import CustomerProfileModal from './CustomerProfileModal';
+import { InvoiceForm, InvoicedOrder, ReadyWhatsAppButton } from './JobInvoice';
 
 const when = (d) => (d ? new Date(String(d).replace(' ', 'T')).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—');
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -36,7 +42,9 @@ function printJob(job) {
     <table>${row('Customer', `${job.customer.name} · ${phoneText(job.customer.phone)}`)}${row('Vehicle', vehicleText(job.vehicle))}
     ${row('Mileage', job.mileage != null ? `${job.mileage.toLocaleString('en-US')} km` : '')}${row('Fuel level', FUEL_LABEL[job.fuel_level])}
     ${row('Existing damage', job.damage_notes)}${row("Customer's requests", job.complaints)}${row('Technician', job.technician)}
-    ${row('Promised for', job.promised_at ? when(job.promised_at) : '')}${row('Notes', job.notes)}</table>
+    ${row('Promised for', job.promised_at ? when(job.promised_at) : '')}${row('Notes', job.notes)}
+    ${job.qc_at ? row('Quality check', `Passed ${when(job.qc_at)}${job.qc_by ? ` by ${job.qc_by}` : ''}`) : ''}
+    ${job.order ? row('Invoice', `Order #${job.order.booking_number}`) : ''}</table>
     <table class="services"><tr><th>Service</th><th>Price</th></tr>
     ${job.services.map((s) => `<tr><td>${esc(s.name)}</td><td>${esc(qar(s.price))}</td></tr>`).join('') || '<tr><td colspan="2">—</td></tr>'}
     <tr><th>Total</th><th>${esc(qar(job.total))}</th></tr></table>
@@ -52,14 +60,18 @@ function printJob(job) {
  * timeline, and print. `onChanged(job, message)` after every save.
  */
 export default function JobCardModal({ id, technicians = [], onClose, onChanged }) {
-  const modalRef = useFocusTrap(true, onClose);
+  const [profileOpen, setProfileOpen] = useState(false);
+  // While the customer profile is open on top, Esc / Tab belong to it
+  const modalRef = useFocusTrap(!profileOpen, onClose);
   const [job, setJob] = useState(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(null); // form values while editing
-  const [pending, setPending] = useState(null); // { status, label, needsNote, askTech }
+  const [pending, setPending] = useState(null); // { status, label, needsNote, askTech, qc }
   const [note, setNote] = useState('');
   const [tech, setTech] = useState('');
+  const [ticked, setTicked] = useState([]); // QC checklist keys
+  const [invoicing, setInvoicing] = useState(false);
 
   useEffect(() => {
     document.body.style.overflow = 'hidden';
@@ -81,16 +93,39 @@ export default function JobCardModal({ id, technicians = [], onClose, onChanged 
   }, [load]);
 
   const ask = (status, label) => {
+    setError('');
+    if (status === 'invoice') {
+      setInvoicing(true);
+      return;
+    }
     const back = status === 'in_progress' && ['quality_check', 'ready'].includes(job.status);
-    setPending({ status, label, needsNote: status === 'cancelled' || back, back, askTech: status === 'in_progress' && job.status === 'open' });
+    setPending({
+      status,
+      label,
+      needsNote: status === 'cancelled' || back,
+      back,
+      askTech: status === 'in_progress' && job.status === 'open',
+      qc: status === 'ready' && job.status === 'quality_check',
+    });
     setNote('');
     setTech(job.technician || '');
-    setError('');
+    setTicked([]);
+  };
+
+  const toggleTick = (key) => setTicked((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
+
+  const changed = (fresh, message) => {
+    setJob(fresh);
+    onChanged(fresh, message);
   };
 
   const move = async () => {
     if (pending.needsNote && !note.trim()) {
       setError(pending.status === 'cancelled' ? NOTE_FOR.cancelled : NOTE_FOR.in_progress_back);
+      return;
+    }
+    if (pending.qc && ticked.length < QC_ITEMS.length) {
+      setError('Tick every item to pass the quality check. If something is not right, use "Failed: back to work" instead.');
       return;
     }
     setBusy(true);
@@ -100,10 +135,10 @@ export default function JobCardModal({ id, technicians = [], onClose, onChanged 
         status: pending.status,
         ...(note.trim() ? { note: note.trim() } : {}),
         ...(pending.askTech ? { technician: tech.trim() } : {}),
+        ...(pending.qc ? { qc: ticked } : {}),
       });
-      setJob(res.data.data);
       setPending(null);
-      onChanged(res.data.data, res.data.message);
+      changed(res.data.data, res.data.message);
     } catch (err) {
       setError(err?.message || 'Could not change the status.');
       if (err?.status === 409) load();
@@ -159,7 +194,12 @@ export default function JobCardModal({ id, technicians = [], onClose, onChanged 
           {job && (
             <>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <Info icon={User} label="Customer">{job.customer.name} · <span dir="ltr">{phoneText(job.customer.phone)}</span></Info>
+                <Info icon={User} label="Customer">
+                  <button type="button" onClick={() => setProfileOpen(true)} className="text-[var(--primary-dark)] underline underline-offset-2 hover:no-underline text-left" title="Open the customer profile: vehicles, job cards and past orders">
+                    {job.customer.name}
+                  </button>
+                  {' · '}<span dir="ltr">{phoneText(job.customer.phone)}</span>
+                </Info>
                 <Info icon={Car} label="Vehicle">{vehicleText(job.vehicle)}</Info>
               </div>
 
@@ -195,11 +235,35 @@ export default function JobCardModal({ id, technicians = [], onClose, onChanged 
                     </tbody>
                   </table>
                   {job.notes && <p className="text-sm text-gray-600"><b>Notes:</b> {job.notes}</p>}
+                  {job.qc_at && (
+                    <p className="text-sm text-green-800 flex items-center gap-1.5">
+                      <ShieldCheck className="w-4 h-4" aria-hidden="true" /> Quality check passed {when(job.qc_at)}{job.qc_by ? ` by ${job.qc_by}` : ''}
+                    </p>
+                  )}
                 </>
               )}
 
+              {/* Ready: tell the customer */}
+              {!editing && job.status === 'ready' && (
+                <div className="border border-green-200 bg-green-50 p-3 flex flex-col sm:flex-row sm:items-center gap-2 justify-between">
+                  <p className="text-sm text-green-900">The car is ready. Let the customer know on WhatsApp.</p>
+                  <ReadyWhatsAppButton job={job} message={readyMessage(job)} />
+                </div>
+              )}
+
+              {/* Delivered from an invoice: the order and its receipt */}
+              {!editing && job.order && <InvoicedOrder job={job} />}
+
+              {invoicing && (
+                <InvoiceForm
+                  job={job}
+                  onCancel={() => setInvoicing(false)}
+                  onDone={(fresh, message) => { setInvoicing(false); changed(fresh, message); }}
+                />
+              )}
+
               {/* Status buttons */}
-              {!editing && ACTIONS[job.status].length > 0 && !pending && (
+              {!editing && !invoicing && ACTIONS[job.status].length > 0 && !pending && (
                 <div className="flex flex-wrap gap-2 pt-1">
                   {ACTIONS[job.status].map(([status, label, kind]) => (
                     <button
@@ -226,6 +290,30 @@ export default function JobCardModal({ id, technicians = [], onClose, onChanged 
               {pending && (
                 <div className="border border-gray-200 bg-gray-50 p-3 space-y-3">
                   <p className="text-sm font-semibold text-gray-900">{pending.label}</p>
+                  {pending.qc && (
+                    <fieldset>
+                      <div className="flex items-center justify-between gap-2 mb-1.5">
+                        <legend className="text-sm font-medium text-gray-700">Quality check ({ticked.length}/{QC_ITEMS.length})</legend>
+                        <button
+                          type="button"
+                          onClick={() => setTicked(ticked.length === QC_ITEMS.length ? [] : QC_ITEMS.map(([k]) => k))}
+                          className="text-xs font-medium text-[var(--primary-dark)] underline underline-offset-2"
+                        >
+                          {ticked.length === QC_ITEMS.length ? 'Untick all' : 'Tick all'}
+                        </button>
+                      </div>
+                      <ul className="space-y-1">
+                        {QC_ITEMS.map(([key, label]) => (
+                          <li key={key}>
+                            <label className="flex items-center gap-2 text-sm font-normal text-gray-900 cursor-pointer">
+                              <input type="checkbox" checked={ticked.includes(key)} onChange={() => toggleTick(key)} className="w-4 h-4" />
+                              {label}
+                            </label>
+                          </li>
+                        ))}
+                      </ul>
+                    </fieldset>
+                  )}
                   {pending.askTech && (
                     <div>
                       <label htmlFor="jc-move-tech">Technician</label>
@@ -248,6 +336,8 @@ export default function JobCardModal({ id, technicians = [], onClose, onChanged 
                   </div>
                 </div>
               )}
+
+              {!editing && job.status !== 'cancelled' && <JobCardPhotos job={job} onChanged={changed} />}
 
               {/* Timeline */}
               {!editing && (
@@ -286,6 +376,7 @@ export default function JobCardModal({ id, technicians = [], onClose, onChanged 
           </div>
         )}
       </div>
+      {profileOpen && job && <CustomerProfileModal customerId={job.customer.id} onClose={() => setProfileOpen(false)} />}
     </div>
   );
 }

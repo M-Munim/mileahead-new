@@ -328,6 +328,9 @@ export const walkInCustomerService = {
 
     getOne: (id) => api.get(API_PATHS.CUSTOMERS.ONE(id)),
 
+    /** The profile: { customer, job_cards, orders, stats } */
+    history: (id) => api.get(API_PATHS.CUSTOMERS.HISTORY(id)),
+
     update: (id, body) => api.put(API_PATHS.CUSTOMERS.UPDATE(id), body),
 
     addVehicle: (customerId, body) => api.post(API_PATHS.CUSTOMERS.VEHICLE_ADD(customerId), body),
@@ -346,10 +349,21 @@ export const jobCardService = {
 
     update: (id, body) => api.put(API_PATHS.JOB_CARDS.UPDATE(id), body),
 
-    /** body: { status, note?, technician? } */
+    /** body: { status, note?, technician?, qc? (ticked checklist keys, needed for ready) } */
     setStatus: (id, body) => api.post(API_PATHS.JOB_CARDS.STATUS(id), body),
 
     technicians: () => api.get(API_PATHS.JOB_CARDS.TECHNICIANS),
+
+    /** Ready → an order with payment → Delivered. body: { payment_method, payment_type?, payment_status } */
+    invoice: (id, body) => api.post(API_PATHS.JOB_CARDS.INVOICE(id), body),
+
+    /** formData: photos (1–6 files), caption? */
+    addPhotos: (id, formData) => api.post(API_PATHS.JOB_CARDS.PHOTOS(id), formData, { headers: { 'Content-Type': undefined }, timeout: 120000 }),
+
+    /** The photo file (private: loaded with the login, as a blob). */
+    getPhoto: (photoId) => api.get(API_PATHS.JOB_CARDS.PHOTO(photoId), { responseType: 'blob', timeout: 60000 }),
+
+    removePhoto: (photoId) => api.put(API_PATHS.JOB_CARDS.PHOTO_DELETE(photoId)),
 };
 
 // ---------- EXPENSES (Super Admin) ----------

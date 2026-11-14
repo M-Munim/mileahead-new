@@ -147,6 +147,7 @@ export const API_PATHS = {
         SEARCH: "/api/v1/customers/search",
         ADD: "/api/v1/customers/add",
         ONE: (id) => `/api/v1/customers/${id}`,
+        HISTORY: (id) => `/api/v1/customers/${id}/history`,
         UPDATE: (id) => `/api/v1/customers/update/${id}`,
         VEHICLE_ADD: (id) => `/api/v1/customers/${id}/vehicles/add`,
         VEHICLE_UPDATE: (id) => `/api/v1/customers/vehicles/update/${id}`,
@@ -160,6 +161,10 @@ export const API_PATHS = {
         UPDATE: (id) => `/api/v1/job-cards/update/${id}`,
         STATUS: (id) => `/api/v1/job-cards/status/${id}`,
         TECHNICIANS: "/api/v1/job-cards/technicians",
+        INVOICE: (id) => `/api/v1/job-cards/invoice/${id}`,
+        PHOTOS: (id) => `/api/v1/job-cards/${id}/photos`,
+        PHOTO: (photoId) => `/api/v1/job-cards/photo/${photoId}`,
+        PHOTO_DELETE: (photoId) => `/api/v1/job-cards/photo/delete/${photoId}`,
     },
 
     // Running costs: bills, rent, salaries (Super Admin only)
