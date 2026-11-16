@@ -357,13 +357,19 @@ export const jobCardService = {
     /** Ready → an order with payment → Delivered. body: { payment_method, payment_type?, payment_status } */
     invoice: (id, body) => api.post(API_PATHS.JOB_CARDS.INVOICE(id), body),
 
-    /** formData: photos (1–6 files), caption? */
-    addPhotos: (id, formData) => api.post(API_PATHS.JOB_CARDS.PHOTOS(id), formData, { headers: { 'Content-Type': undefined }, timeout: 120000 }),
+    /** formData: photos (1–6 photos or videos), caption?, stage? (check_in | after) */
+    addPhotos: (id, formData) => api.post(API_PATHS.JOB_CARDS.PHOTOS(id), formData, { headers: { 'Content-Type': undefined }, timeout: 300000 }),
 
-    /** The photo file (private: loaded with the login, as a blob). */
-    getPhoto: (photoId) => api.get(API_PATHS.JOB_CARDS.PHOTO(photoId), { responseType: 'blob', timeout: 60000 }),
+    /** The photo/video file (private: loaded with the login, as a blob). */
+    getPhoto: (photoId) => api.get(API_PATHS.JOB_CARDS.PHOTO(photoId), { responseType: 'blob', timeout: 180000 }),
 
     removePhoto: (photoId) => api.put(API_PATHS.JOB_CARDS.PHOTO_DELETE(photoId)),
+
+    /** Turns on the customer's private inspection link → { token } (keeps an existing one). */
+    inspectionLink: (id) => api.post(API_PATHS.JOB_CARDS.INSPECTION_LINK(id)),
+
+    /** Turns the link off: the customer's page stops working. */
+    removeInspectionLink: (id) => api.put(API_PATHS.JOB_CARDS.INSPECTION_LINK_DELETE(id)),
 };
 
 // ---------- EXPENSES (Super Admin) ----------

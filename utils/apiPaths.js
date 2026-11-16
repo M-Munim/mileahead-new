@@ -165,6 +165,11 @@ export const API_PATHS = {
         PHOTOS: (id) => `/api/v1/job-cards/${id}/photos`,
         PHOTO: (photoId) => `/api/v1/job-cards/photo/${photoId}`,
         PHOTO_DELETE: (photoId) => `/api/v1/job-cards/photo/delete/${photoId}`,
+        INSPECTION_LINK: (id) => `/api/v1/job-cards/inspection-link/${id}`,
+        INSPECTION_LINK_DELETE: (id) => `/api/v1/job-cards/inspection-link/delete/${id}`,
+        // Public (no login): the customer's inspection page
+        PUBLIC_INSPECTION: (token) => `/api/v1/public/inspection/${token}`,
+        PUBLIC_INSPECTION_MEDIA: (token, mediaId) => `/api/v1/public/inspection/${token}/media/${mediaId}`,
     },
 
     // Running costs: bills, rent, salaries (Super Admin only)

@@ -61,6 +61,68 @@ export const QC_ITEMS = [
 export const MAX_PHOTOS = 30;
 export const PHOTOS_PER_UPLOAD = 6;
 
+// ---- window tint + warranty (same values as the server) ----
+export const TINT_FILMS = ['Normal Tint', 'Nano Ceramic Tint'];
+export const TINT_WINDOWS = [
+  ['front_windshield', 'Front windshield'],
+  ['front_side', 'Front side windows'],
+  ['back_side', 'Back side windows'],
+  ['back_windshield', 'Back windshield'],
+];
+/** Usual shade choices (%); any 0–100 can be typed. */
+export const TINT_SHADES = [5, 10, 15, 20, 30, 35, 50, 70, 100];
+export const DEFAULT_WARRANTY_YEARS = 5;
+
+/** A tint service is on the list: the job card asks for the film, shades and warranty. */
+export const hasTint = (services) => (services || []).some((s) => /tint/i.test(s?.name || ''));
+
+/** JC-1023 → WT-1023 (one warranty per job card). */
+export const warrantyNumber = (job) => `WT-${String(job?.job_number || job?.id || '').replace(/^JC-/, '')}`;
+
+/**
+ * The installation date: the one typed, else the Qatar date the job was
+ * invoiced / passed QC (the server sends those times in UTC, so a job closed
+ * after midnight in Qatar would otherwise get the day before).
+ */
+export function installedOn(job) {
+  const typed = job?.tint_details?.installed_on;
+  if (typed) return typed;
+  const raw = job?.invoiced_at || job?.qc_at;
+  const d = raw ? new Date(String(raw).replace(' ', 'T')) : null;
+  if (!d || Number.isNaN(d.getTime())) return '';
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Qatar' }).format(d);
+}
+
+/** installed + years (same day and month). '' when there's no installation date. */
+export function warrantyExpiry(installed, years = DEFAULT_WARRANTY_YEARS) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(installed || '')) return '';
+  const [y, m, d] = installed.split('-').map(Number);
+  const year = y + Number(years || DEFAULT_WARRANTY_YEARS);
+  const leap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+  const day = m === 2 && d === 29 && !leap ? 28 : d; // 29 Feb → 28 Feb in a normal year
+  return `${year}-${String(m).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+/** '2026-11-16' → '16 / 11 / 2026' (as on the printed card). */
+export const cardDate = (iso) => (iso ? iso.split('-').reverse().join(' / ') : '');
+
+// ---- the customer's inspection link ----
+export const inspectionUrl = (token) => `${typeof window !== 'undefined' ? window.location.origin : ''}/inspection/${token}`;
+
+/** WhatsApp message with the private inspection link. */
+export function inspectionMessage(job, url) {
+  const name = job.customer?.name ? ` ${job.customer.name.trim().split(/\s+/)[0]}` : '';
+  return [
+    '*Magic Track*',
+    '',
+    `Hi${name}, the service on your car${job.vehicle?.plate ? ` (${job.vehicle.plate})` : ''} is complete.`,
+    'Here are the inspection photos and videos of your car after the service:',
+    url,
+    '',
+    'Thank you for choosing Magic Track.',
+  ].join('\n');
+}
+
 /** WhatsApp message: the car is ready to collect. */
 export function readyMessage(job) {
   const name = job.customer?.name ? ` ${job.customer.name}` : '';

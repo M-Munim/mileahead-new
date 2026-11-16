@@ -6,8 +6,9 @@ import { useFocusTrap } from '@/app/hooks/useFocusTrap';
 import { jobCardService } from '../../utils/axiosInstance';
 import {
   STATUS_LABEL, STATUS_PILL, ACTIONS, NOTE_FOR, FUEL_LABEL, OPEN_STATUSES, QC_ITEMS,
-  vehicleText, phoneText, readyMessage,
+  vehicleText, phoneText, readyMessage, hasTint,
 } from '../../utils/jobCards';
+import { TintSummary, shadesText } from './TintWarranty';
 import { qar } from '../../utils/inventory';
 import JobDetailsForm, { detailsFrom, detailsBody } from './JobDetailsForm';
 import JobCardPhotos from './JobCardPhotos';
@@ -43,6 +44,7 @@ function printJob(job) {
     ${row('Mileage', job.mileage != null ? `${job.mileage.toLocaleString('en-US')} km` : '')}${row('Fuel level', FUEL_LABEL[job.fuel_level])}
     ${row('Existing damage', job.damage_notes)}${row("Customer's requests", job.complaints)}${row('Technician', job.technician)}
     ${row('Promised for', job.promised_at ? when(job.promised_at) : '')}${row('Notes', job.notes)}
+    ${job.tint_details ? row('Window tint', [job.tint_details.film_brand, shadesText(job.tint_details.shades)].filter(Boolean).join(' · ')) : ''}
     ${job.qc_at ? row('Quality check', `Passed ${when(job.qc_at)}${job.qc_by ? ` by ${job.qc_by}` : ''}`) : ''}
     ${job.order ? row('Invoice', `Order #${job.order.booking_number}`) : ''}</table>
     <table class="services"><tr><th>Service</th><th>Price</th></tr>
@@ -234,6 +236,7 @@ export default function JobCardModal({ id, technicians = [], onClose, onChanged 
                       <tr className="border-t border-gray-200 bg-gray-50 font-semibold"><td className="px-3 py-2">Total</td><td className="px-3 py-2 text-right tabular-nums">{qar(job.total)}</td></tr>
                     </tbody>
                   </table>
+                  {(job.tint_details || hasTint(job.services)) && job.status !== 'cancelled' && <TintSummary job={job} onChanged={changed} />}
                   {job.notes && <p className="text-sm text-gray-600"><b>Notes:</b> {job.notes}</p>}
                   {job.qc_at && (
                     <p className="text-sm text-green-800 flex items-center gap-1.5">

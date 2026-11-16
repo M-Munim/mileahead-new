@@ -2,11 +2,13 @@
 
 import { useState } from 'react';
 import { Plus, Trash2, Fuel } from 'lucide-react';
-import { FUEL_LEVELS, SERVICE_OPTIONS, listPrice } from '../../utils/jobCards';
+import { FUEL_LEVELS, SERVICE_OPTIONS, listPrice, hasTint } from '../../utils/jobCards';
 import { qar, readAmount } from '../../utils/inventory';
+import { TintFields, tintFrom, tintBody } from './TintWarranty';
 
 /** Starting values for the form from a job card (or empty for a new one). */
 export const detailsFrom = (job) => ({
+  tint: tintFrom(job?.tint_details),
   mileage: job?.mileage != null ? String(job.mileage) : '',
   fuel_level: job?.fuel_level || '',
   damage_notes: job?.damage_notes || '',
@@ -27,7 +29,14 @@ export function detailsBody(d) {
     if (price === null) return `The price of ${s.name} must be a number.`;
     services.push({ name: s.name.trim(), price });
   }
+  // Tint details only while a tint service is on the list
+  let tint = null;
+  if (hasTint(services)) {
+    tint = tintBody(d.tint);
+    if (typeof tint === 'string') return tint;
+  }
   return {
+    tint_details: tint,
     mileage: d.mileage.trim(),
     fuel_level: d.fuel_level || null,
     damage_notes: d.damage_notes.trim(),
@@ -127,6 +136,8 @@ export default function JobDetailsForm({ value, onChange, vehicleType, technicia
         </div>
         {!vehicleType && <p className="mt-1 text-[11px] text-gray-500">The vehicle has no type saved, so prices aren&apos;t filled in. Type them.</p>}
       </div>
+
+      {hasTint(value.services) && <TintFields value={value.tint} onChange={(t) => set('tint', t)} />}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
