@@ -9,7 +9,7 @@ import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import Toast from '../components/Toast';
 import { useAuth } from '../contexts/AuthContext';
-import { fetchCarWashOrders } from '../../utils/carWashApi';
+import { fetchCarWashOrders, openOrdersUpTo, dayText } from '../../utils/carWashApi';
 import { formatQar } from '../../utils/priceList';
 import { getWhatsAppUrl } from '../../utils/location';
 import { downloadDayReportPdf } from '../../utils/dayClosePdf';
@@ -120,6 +120,8 @@ export default function DayClosePage() {
   const end = from <= to ? to : from;
   const report = useMemo(() => buildDayReport(orders, start, end), [orders, start, end]);
   const label = rangeLabel(start, end);
+  // Cars still Waiting / Washing / Ready: close them before closing the day.
+  const stillOpen = useMemo(() => openOrdersUpTo(orders, end), [orders, end]);
 
   const today = isoDate();
   const periods = presets();
@@ -299,6 +301,23 @@ export default function DayClosePage() {
                   />
                   <StatCard icon={Tag} label="Discounts given" value={formatQar(report.discountTotal)} sub={`${report.orders.length} orders in total`} />
                 </div>
+
+                {stillOpen.length > 0 && (
+                  <div className="px-3 py-2.5 text-sm bg-red-50 border border-red-200 text-red-800 print:hidden" role="alert">
+                    <p className="font-semibold flex items-center gap-1.5">
+                      <AlertCircle className="w-4 h-4 shrink-0" aria-hidden="true" />
+                      {stillOpen.length} order{stillOpen.length === 1 ? ' is' : 's are'} still open. Mark {stillOpen.length === 1 ? 'it' : 'them'} Collected in Car Wash Orders before closing the day.
+                    </p>
+                    <ul className="mt-1.5 ml-6 list-disc text-[13px] space-y-0.5">
+                      {stillOpen.slice(0, 10).map((o) => (
+                        <li key={o.id}>
+                          #{o.id} · {o.queue} · {o.numberPlate ? `plate ${o.numberPlate}` : 'no plate'} · <span className="capitalize">{o.stage}</span> · {o.date < isoDate() ? `from ${dayText(o.date)}` : 'today'}
+                        </li>
+                      ))}
+                      {stillOpen.length > 10 && <li>and {stillOpen.length - 10} more</li>}
+                    </ul>
+                  </div>
+                )}
 
                 {report.byChannel.unspecified.count > 0 && (
                   <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 px-3 py-2">

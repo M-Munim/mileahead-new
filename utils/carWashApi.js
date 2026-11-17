@@ -325,6 +325,31 @@ export async function setOrderStage(order, stage) {
   return bookingService.updateStatus({ bookingId: order.originalId, newStatus: stage });
 }
 
+/**
+ * Open orders: still Waiting, Washing or Ready. The queue screen shows only
+ * today's, so an order from an earlier day that staff forgot to close drops
+ * off the screen but stays open here; these helpers flag it.
+ */
+export const OPEN_STAGES = ['waiting', 'washing', 'ready'];
+const localDay = (d = new Date()) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+/** Open and from a day before `today` (YYYY-MM-DD): never closed. */
+export const leftOpen = (order, today = localDay()) =>
+  OPEN_STAGES.includes(order?.stage) && !!order?.date && order.date < today;
+
+/** Orders still open on or before `upTo` (YYYY-MM-DD), oldest first. */
+export const openOrdersUpTo = (orders, upTo = localDay()) => (orders || [])
+  .filter((o) => OPEN_STAGES.includes(o.stage) && o.date && o.date <= upTo)
+  .sort((a, b) => (a.date === b.date ? a.originalId - b.originalId : a.date < b.date ? -1 : 1));
+
+/** "15 Nov" from YYYY-MM-DD. */
+export function dayText(iso) {
+  const [y, m, d] = String(iso || '').split('-').map(Number);
+  if (!y || !m || !d) return iso || '';
+  return new Date(y, m - 1, d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+}
+
 /** Today's cars that are not collected yet, for the queue screen. Oldest first. */
 export async function fetchQueue() {
   const d = new Date();

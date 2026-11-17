@@ -23,6 +23,7 @@ import {
   fetchCarWashOrders, createCarWashOrder, setOrderPaymentStatus, updateOrderField as saveOrderField,
   deleteOrder, fetchAppointments, createAppointment, cancelAppointment, setOrderStage, STAGES,
   fetchDeletedBookingHistory, saveOrderReceipt, updateOrderPrice as saveOrderPrice, fetchPriceChangeHistory,
+  leftOpen, dayText,
 } from '../../utils/carWashApi';
 
 /**
@@ -604,6 +605,12 @@ function OrderDrawer({
               );
             })}
           </div>
+          {leftOpen(order) && (
+            <p className="mt-2 px-3 py-2 text-[12px] bg-red-50 border border-red-200 text-red-800" role="note">
+              Not closed: this order is from {dayText(order.date)} and is still {STAGE_META[order.stage].label}.
+              It no longer shows on the queue screen. Set it to Collected (or delete it if the car never came).
+            </p>
+          )}
 
           {/* Order details */}
           <div className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold mt-4 mb-2">Order Details</div>
@@ -1539,6 +1546,11 @@ export default function OrdersPage() {
                             >
                               {STAGES.map((stage) => <option key={stage} value={stage}>{STAGE_META[stage].label}</option>)}
                             </select>
+                            {leftOpen(o) && (
+                              <span className="block mt-1 w-fit px-2 py-0.5 rounded-full text-[10px] font-semibold bg-red-100 text-red-700 whitespace-nowrap" title="This order is from an earlier day and was never closed. It no longer shows on the queue screen. Set it to Collected.">
+                                Not closed · from {dayText(o.date)}
+                              </span>
+                            )}
                           </td>
                           <td className="px-3.5 py-3 text-sm text-gray-700 whitespace-nowrap">{discountLabel(o)}</td>
                           <td className="px-3.5 py-3" onClick={(e) => e.stopPropagation()}>
