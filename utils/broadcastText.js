@@ -43,17 +43,67 @@ export const TEMPLATE_STATUS = {
   disabled: { label: 'Disabled by Meta', pill: 'bg-red-100 text-red-700' },
 };
 
+// ---- price blanks: {{price_1}} … {{price_9}} ----
+// Meta approves the wording once; each broadcast types its own prices, so a
+// price change needs no new approval. Same rules as the server.
+export const PRICE_TAG = /^\{\{price_([1-9])\}\}$/;
+export const MAX_PRICES = 9;
+export const MAX_VALUE = 30;
+const ANY_TAG = /\{\{[^}]*\}\}/g;
+
+/** The price blanks in the message, in order: ['price_1', 'price_2']. */
+export const priceKeys = (body) =>
+  (String(body || '').match(ANY_TAG) || []).filter((t) => PRICE_TAG.test(t)).map((t) => t.slice(2, -2));
+
+/** "price_2" → "Price 2" */
+export const priceLabel = (key) => `Price ${String(key).replace('price_', '')}`;
+
+/** The next free blank, e.g. {{price_3}}, or '' when all 9 are used. */
+export function nextPriceTag(body) {
+  const used = new Set(priceKeys(body));
+  for (let n = 1; n <= MAX_PRICES; n += 1) if (!used.has(`price_${n}`)) return `{{price_${n}}}`;
+  return '';
+}
+
+/** The first price blank without a value, as a message, or ''. */
+export function valuesProblem(body, values, what = 'the price') {
+  for (const key of priceKeys(body)) {
+    const v = String(values?.[key] ?? '').trim();
+    if (!v) return `Type ${what} for ${priceLabel(key)}.`;
+    if (v.length > MAX_VALUE) return `${priceLabel(key)} must be ${MAX_VALUE} characters or less.`;
+  }
+  return '';
+}
+
+/** Only the values for the message's blanks, trimmed (what the server keeps). */
+export const valuesFor = (body, values) =>
+  Object.fromEntries(priceKeys(body).map((k) => [k, String(values?.[k] ?? '').trim()]));
+
+/** The message with the name and prices filled in; an empty price shows as [Price 1]. */
+export function fillBlanks(body, { name, values } = {}) {
+  return String(body || '').replace(ANY_TAG, (tag) => {
+    if (tag === NAME_TAG) return name ?? tag;
+    if (!PRICE_TAG.test(tag)) return tag;
+    const key = tag.slice(2, -2);
+    return String(values?.[key] ?? '').trim() || `[${priceLabel(key)}]`;
+  });
+}
+
 /** The first reason Meta would refuse this text, or ''. */
 export function templateTextProblem(body, footer) {
   const text = String(body || '').trim();
   if (!text) return 'Write the message.';
   if (text.length > MAX_BODY) return `Keep the message under ${MAX_BODY} characters.`;
-  const tags = text.match(/\{\{[^}]*\}\}/g) || [];
-  if (tags.some((t) => t !== NAME_TAG)) return 'Only the customer name ({{name}}) can be filled in. Remove other {{ }} parts.';
-  if (tags.length > 1) return 'Use the customer name only once.';
-  if (text.startsWith(NAME_TAG) || text.endsWith(NAME_TAG)) {
-    return 'Meta does not allow the customer name as the very first or last word. Add a word before or after it.';
+  const tags = text.match(ANY_TAG) || [];
+  if (tags.some((t) => t !== NAME_TAG && !PRICE_TAG.test(t))) {
+    return 'Only the customer name ({{name}}) and price blanks ({{price_1}} … {{price_9}}) can be filled in. Remove other {{ }} parts.';
   }
+  const repeated = tags.find((t, i) => tags.indexOf(t) !== i);
+  if (repeated) return repeated === NAME_TAG ? 'Use the customer name only once.' : `Use ${repeated} only once.`;
+  if (/^\{\{[^}]*\}\}/.test(text) || /\{\{[^}]*\}\}$/.test(text)) {
+    return 'Meta does not allow the customer name or a price blank as the very first or last word. Add a word before or after it.';
+  }
+  if (/\}\}\s*\{\{/.test(text)) return 'Put some words between two blanks. Meta does not allow them side by side.';
   const foot = String(footer || '').trim();
   if (foot.length > MAX_FOOTER) return `Keep the footer under ${MAX_FOOTER} characters.`;
   if (/\{\{|\}\}/.test(foot)) return 'The footer cannot have the customer name.';

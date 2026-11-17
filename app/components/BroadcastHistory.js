@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useState } from 'react';
 import { ChevronDown, ChevronRight, History, Loader2 } from 'lucide-react';
 import { broadcastService } from '../../utils/axiosInstance';
-import { audienceText, dateText } from '../../utils/broadcastText';
+import { audienceText, dateText, fillBlanks } from '../../utils/broadcastText';
 
 /**
  * Broadcasts that have gone out (or tried to), newest first, with how many
@@ -165,7 +165,7 @@ export default function BroadcastHistory({ broadcasts, loading, sendingEnabled }
                           Template <span className="font-mono">{b.template_name}</span> · {b.template_language}
                           {b.created_by ? ` · by ${b.created_by}` : ''}
                         </p>
-                        <p className="text-sm text-gray-800 whitespace-pre-wrap break-words" dir="auto">{b.message_body}</p>
+                        <p className="text-sm text-gray-800 whitespace-pre-wrap break-words" dir="auto">{fillBlanks(b.message_body, { values: b.template_values })}</p>
                       </div>
                       <Recipients broadcast={b} />
                     </td>

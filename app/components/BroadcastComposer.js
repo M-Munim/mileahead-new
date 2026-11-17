@@ -3,9 +3,10 @@
 import { useState, useEffect } from 'react';
 import { Loader2, AlertCircle, Users, Lock, Save, CalendarClock, X, CheckCircle2, Info } from 'lucide-react';
 import WhatsAppPreview from './WhatsAppPreview';
+import PriceFields from './PriceFields';
 import { broadcastService } from '../../utils/axiosInstance';
 import { SERVICE_GROUPS } from '../../utils/priceList';
-import { TEMPLATE_STATUS } from '../../utils/broadcastText';
+import { TEMPLATE_STATUS, valuesProblem, valuesFor } from '../../utils/broadcastText';
 
 /**
  * Pick a message template, pick who gets it and save it as a draft or
@@ -38,6 +39,8 @@ export default function BroadcastComposer({ editing, templates = [], sendingEnab
   const [days, setDays] = useState(String(editing?.audience?.days || 30));
   const [service, setService] = useState(editing?.audience?.service || '');
   const [when, setWhen] = useState(toLocalInput(editing?.scheduled_at));
+  // This broadcast's prices for the template's price blanks
+  const [values, setValues] = useState(editing?.template_values || {});
   const [count, setCount] = useState(null);
   const [counting, setCounting] = useState(true);
   const [countError, setCountError] = useState('');
@@ -77,6 +80,8 @@ export default function BroadcastComposer({ editing, templates = [], sendingEnab
     if (!title.trim()) return 'Give this broadcast a name.';
     if (!templateId) return 'Pick the message to send.';
     if (!selected) return 'That message template no longer exists. Pick another one.';
+    const priceProblem = valuesProblem(selected.body, values);
+    if (priceProblem) return priceProblem;
     if (!daysOk) return 'Enter a number of days from 1 to 3650.';
     if (when && new Date(when).getTime() < Date.now()) return 'Choose a time in the future.';
     if (when && !approved) return 'Only a message Meta has approved can be scheduled. Leave the time empty to save a draft.';
@@ -94,6 +99,7 @@ export default function BroadcastComposer({ editing, templates = [], sendingEnab
     const body = {
       title: title.trim(),
       template_id: Number(templateId),
+      template_values: valuesFor(selected.body, values),
       audience: { type, days: type === 'all' ? null : daysNumber, service: service || null },
       scheduled_at: when ? new Date(when).toISOString() : null,
     };
@@ -158,6 +164,18 @@ export default function BroadcastComposer({ editing, templates = [], sendingEnab
             </>
           )}
         </div>
+
+        {selected && (
+          <PriceFields
+            body={selected.body}
+            values={values}
+            onChange={setValues}
+            idPrefix="bc-price"
+            title="Prices in this message"
+            hint="Type this broadcast's prices. Changing them needs no new approval from Meta."
+            required
+          />
+        )}
 
         <div>
           <span className="block text-sm font-medium text-gray-700 mb-2">Who gets it?</span>
@@ -264,6 +282,7 @@ export default function BroadcastComposer({ editing, templates = [], sendingEnab
             body={selected?.body}
             footer={selected?.footer}
             sampleName={selected?.sample_name}
+            values={values}
             buttonText={selected?.button_text}
             emptyText="Pick a message to see it as customers will."
           />

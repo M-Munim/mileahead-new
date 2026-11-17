@@ -1,7 +1,7 @@
 'use client';
 
 import { ExternalLink } from 'lucide-react';
-import { NAME_TAG, SAMPLE_NAME } from '../../utils/broadcastText';
+import { NAME_TAG, SAMPLE_NAME, priceKeys, fillBlanks } from '../../utils/broadcastText';
 
 /** *bold* the way WhatsApp shows it. */
 function WhatsAppText({ text }) {
@@ -10,12 +10,16 @@ function WhatsAppText({ text }) {
   ));
 }
 
-/** The message as a customer sees it, with an example name for {{name}}. */
-export default function WhatsAppPreview({ body, footer, sampleName, buttonText, emptyText = 'The message shows here as customers will see it.' }) {
+/**
+ * The message as a customer sees it: an example name for {{name}} and the
+ * given prices for the price blanks (an empty one shows as [Price 1]).
+ */
+export default function WhatsAppPreview({ body, footer, sampleName, values, buttonText, emptyText = 'The message shows here as customers will see it.' }) {
   const name = (sampleName || '').trim() || SAMPLE_NAME;
-  const text = String(body || '').trim().replaceAll(NAME_TAG, name);
+  const text = fillBlanks(String(body || '').trim(), { name, values });
   const foot = String(footer || '').trim();
   const button = String(buttonText || '').trim();
+  const hasPrices = priceKeys(body).length > 0;
   return (
     <div>
       <div className="bg-[#e5ddd5] p-3 min-h-[160px]">
@@ -37,6 +41,9 @@ export default function WhatsAppPreview({ body, footer, sampleName, buttonText, 
       </div>
       {String(body || '').includes(NAME_TAG) && (
         <p className="mt-1 text-[11px] text-gray-500">&quot;{name}&quot; is an example. Each customer sees their own name.</p>
+      )}
+      {hasPrices && (
+        <p className="mt-1 text-[11px] text-gray-500">The prices are typed for each broadcast, so they can change without a new Meta approval.</p>
       )}
     </div>
   );

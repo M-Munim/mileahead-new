@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Loader2, AlertCircle, Info, Lock, Pencil, Trash2, Send, X, FileText, Save, RefreshCw, Smartphone, MessageCircle } from 'lucide-react';
 import ConfirmationDialog from './ConfirmationDialog';
 import WhatsAppPreview from './WhatsAppPreview';
+import PriceFields from './PriceFields';
 import { broadcastService } from '../../utils/axiosInstance';
 import {
   NAME_TAG,
@@ -21,6 +22,9 @@ import {
   CHAT_BUTTON_TEXT,
   CHAT_NUMBER_TEXT,
   CHAT_LINK,
+  nextPriceTag,
+  valuesProblem,
+  valuesFor,
 } from '../../utils/broadcastText';
 
 /**
@@ -46,24 +50,30 @@ function TemplateForm({ editing, onSaved, onCancel }) {
   const [sampleName, setSampleName] = useState(editing?.sample_name || '');
   const [buttonText, setButtonText] = useState(editing?.button_text || '');
   const [buttonUrl, setButtonUrl] = useState(editing?.button_url || '');
+  const [sampleValues, setSampleValues] = useState(editing?.sample_values || {});
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const bodyBox = useRef(null);
   const lockedName = !!editing?.submitted_at;
 
-  const insertName = () => {
+  /** Puts a blank where the cursor is. */
+  const insertTag = (tag) => {
+    if (!tag) return;
     const box = bodyBox.current;
     const at = box?.selectionStart ?? body.length;
-    setBody(`${body.slice(0, at)}${NAME_TAG}${body.slice(box?.selectionEnd ?? at)}`);
+    setBody(`${body.slice(0, at)}${tag}${body.slice(box?.selectionEnd ?? at)}`);
     box?.focus();
   };
+  const priceTag = nextPriceTag(body);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (saving) return;
     const problem = !TEMPLATE_NAME.test(name.trim())
       ? 'Give the template a name: lowercase letters, numbers and _ only (e.g. eid_offer_2026).'
-      : templateTextProblem(body, footer) || buttonProblem(buttonText, buttonUrl);
+      : templateTextProblem(body, footer)
+        || valuesProblem(body, sampleValues, 'an example price (for Meta\'s review)')
+        || buttonProblem(buttonText, buttonUrl);
     setError(problem);
     if (problem) return;
 
@@ -77,14 +87,16 @@ function TemplateForm({ editing, onSaved, onCancel }) {
       sample_name: sampleName.trim(),
       button_text: buttonText.trim(),
       button_url: buttonUrl.trim(),
+      sample_values: valuesFor(body, sampleValues),
     };
     try {
       let res;
       if (editing) {
         // Only what changed; the name and language are fixed once sent to Meta.
-        const changed = Object.fromEntries(
-          Object.entries(fields).filter(([k, v]) => v !== (editing[k] ?? '')),
-        );
+        const same = (k, v) => (k === 'sample_values'
+          ? JSON.stringify(v) === JSON.stringify(valuesFor(editing.body, editing.sample_values))
+          : v === (editing[k] ?? ''));
+        const changed = Object.fromEntries(Object.entries(fields).filter(([k, v]) => !same(k, v)));
         if (Object.keys(changed).length === 0) {
           onCancel();
           return;
@@ -159,9 +171,20 @@ function TemplateForm({ editing, onSaved, onCancel }) {
         <div>
           <div className="flex items-end justify-between gap-3">
             <label htmlFor="tpl-body">Message<span className="text-red-500" aria-hidden="true"> *</span></label>
-            <button type="button" onClick={insertName} className="mb-1 px-2 py-1 text-xs font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors">
-              + Customer name
-            </button>
+            <div className="mb-1 flex gap-1.5">
+              <button type="button" onClick={() => insertTag(NAME_TAG)} className="px-2 py-1 text-xs font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors">
+                + Customer name
+              </button>
+              <button
+                type="button"
+                onClick={() => insertTag(priceTag)}
+                disabled={!priceTag}
+                title="A blank the team fills in for each broadcast, so prices can change without a new Meta approval"
+                className="px-2 py-1 text-xs font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-50"
+              >
+                + Price
+              </button>
+            </div>
           </div>
           <textarea
             id="tpl-body"
@@ -174,10 +197,20 @@ function TemplateForm({ editing, onSaved, onCancel }) {
             placeholder={`Hi ${NAME_TAG}, Eid Mubarak! Enjoy 20% off any wash this week at Magic Track.`}
           />
           <div className="mt-1 flex justify-between gap-3 text-[11px] text-gray-500">
-            <span>Use *stars* for bold. The customer name can be used once, not as the first or last word.</span>
+            <span>Use *stars* for bold. <b>+ Price</b> adds a blank you fill in for each broadcast, so prices can change without a new approval. Blanks can&apos;t be the first or last word.</span>
             <span className="tabular-nums shrink-0">{body.length} / {MAX_BODY}</span>
           </div>
         </div>
+
+        <PriceFields
+          body={body}
+          values={sampleValues}
+          onChange={setSampleValues}
+          idPrefix="tpl-sample"
+          title="Example prices for Meta"
+          hint="Meta only sees these examples when reviewing. Each broadcast types its own prices."
+          required
+        />
 
         <div className="grid grid-cols-1 sm:grid-cols-[1fr_200px] gap-4">
           <div>
@@ -239,7 +272,7 @@ function TemplateForm({ editing, onSaved, onCancel }) {
 
       <aside className="min-w-0">
         <h2 className="text-sm font-semibold text-gray-900 mb-2">Preview</h2>
-        <WhatsAppPreview body={body} footer={footer} sampleName={sampleName} buttonText={buttonText} />
+        <WhatsAppPreview body={body} footer={footer} sampleName={sampleName} values={sampleValues} buttonText={buttonText} />
       </aside>
     </form>
   );
@@ -258,6 +291,7 @@ const readTestNumber = () => {
 /** Sends an approved template to one phone, to see it for real. */
 function TestSend({ template, onClose, onToast }) {
   const [phone, setPhone] = useState(readTestNumber);
+  const [values, setValues] = useState(template.sample_values || {});
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
 
@@ -268,10 +302,15 @@ function TestSend({ template, onClose, onToast }) {
       setError('Enter the WhatsApp number, with the country code.');
       return;
     }
+    const missing = valuesProblem(template.body, values);
+    if (missing) {
+      setError(missing);
+      return;
+    }
     setSending(true);
     setError('');
     try {
-      const res = await broadcastService.sendTestTemplate(template.id, { phone: phone.trim() });
+      const res = await broadcastService.sendTestTemplate(template.id, { phone: phone.trim(), values: valuesFor(template.body, values) });
       try { localStorage.setItem(TEST_NUMBER_KEY, phone.trim()); } catch { /* private mode */ }
       onToast(res.data?.message || 'Test sent', 'success');
       onClose();
@@ -291,6 +330,9 @@ function TestSend({ template, onClose, onToast }) {
         <button type="button" onClick={onClose} aria-label="Close" className="text-gray-500 hover:text-gray-800">
           <X className="w-4 h-4" aria-hidden="true" />
         </button>
+      </div>
+      <div className="mt-3">
+        <PriceFields body={template.body} values={values} onChange={setValues} idPrefix="tpl-test" title="Prices for this test" required />
       </div>
       <fieldset disabled={sending} className="mt-3 flex flex-col sm:flex-row gap-2 sm:items-end">
         <div className="flex-1">
