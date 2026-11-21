@@ -153,6 +153,14 @@ export const API_PATHS = {
         VEHICLE_UPDATE: (id) => `/api/v1/customers/vehicles/update/${id}`,
     },
 
+    // Customer wallet: prepaid balance per phone
+    WALLET: {
+        LIST: "/api/v1/wallets",
+        GET: "/api/v1/wallet",
+        TOPUP: "/api/v1/wallet/topup",
+        REFUND: "/api/v1/wallet/refund",
+    },
+
     // Job cards: the work order for one visit
     JOB_CARDS: {
         GET_ALL: "/api/v1/job-cards",

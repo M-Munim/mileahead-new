@@ -338,6 +338,21 @@ export const walkInCustomerService = {
     updateVehicle: (id, body) => api.put(API_PATHS.CUSTOMERS.VEHICLE_UPDATE(id), body),
 };
 
+// ---------- CUSTOMER WALLET ----------
+export const walletService = {
+    /** Every wallet: [{ id, phone, name, balance }] */
+    list: () => api.get(API_PATHS.WALLET.LIST),
+
+    /** { phone, wallet (null if none yet), transactions } */
+    get: (phone) => api.get(API_PATHS.WALLET.GET, { params: { phone } }),
+
+    /** body: { phone, name, amount, bonus?, payment_method (Cash/Card/Fawran), note? } */
+    topUp: (body) => api.post(API_PATHS.WALLET.TOPUP, body),
+
+    /** Super Admin only. body: { phone, amount, payment_method, note } */
+    refund: (body) => api.post(API_PATHS.WALLET.REFUND, body),
+};
+
 // ---------- JOB CARDS ----------
 export const jobCardService = {
     /** params: { status ('active' or one status), search, page, limit } */

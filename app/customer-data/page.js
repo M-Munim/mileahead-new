@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import {
-  Search, RotateCcw, RefreshCw, Download, Megaphone, Users, X, Info, Loader2, AlertCircle, ChevronLeft, ChevronRight,
+  Search, RotateCcw, RefreshCw, Download, Megaphone, Users, X, Info, Loader2, AlertCircle, ChevronLeft, ChevronRight, Wallet,
 } from 'lucide-react';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
@@ -10,6 +10,9 @@ import Toast from '../components/Toast';
 import { useFocusTrap } from '@/app/hooks/useFocusTrap';
 import { DISCOUNTS, PAYMENT_TYPES, SERVICE_GROUPS, ALL_VEHICLES, OTHER_SERVICES_TITLE } from '../../utils/priceList';
 import { fetchCarWashOrders } from '../../utils/carWashApi';
+import { walletService } from '../../utils/axiosInstance';
+import { walletsByPhone, phoneKey, formatQar } from '../../utils/wallet';
+import WalletModal from '../components/WalletModal';
 
 /** Customers per page in the table (paging is on screen; server-side paging is planned). */
 const ROWS_PER_PAGE = 100;
@@ -109,7 +112,7 @@ function buildCustomers(orders) {
 
 const EMPTY_FILTERS = {
   q: '', segment: '', lastVisit: '', visits: '', service: '', vehicle: '',
-  discount: '', payment: '', status: '', spent: '',
+  discount: '', payment: '', status: '', spent: '', wallet: '',
 };
 
 const SERVICES = [
@@ -139,6 +142,9 @@ function matchesFilters(c, f) {
   if (f.spent === '0-300' && c.spent >= 300) return false;
   if (f.spent === '300-800' && (c.spent < 300 || c.spent >= 800)) return false;
   if (f.spent === '800+' && c.spent < 800) return false;
+
+  if (f.wallet === 'has' && !(c.walletBalance > 0)) return false;
+  if (f.wallet === 'none' && c.walletBalance > 0) return false;
   return true;
 }
 
@@ -155,8 +161,8 @@ const firstName = (name) => (name || '').split(' ')[0] || 'Customer';
 
 /** CSV that opens cleanly in Excel (BOM + quoted cells). */
 function downloadCsv(list) {
-  const header = ['Name', 'Phone', 'Plate', 'Vehicle', 'Service', 'Discount', 'Visits', 'Days since last visit', 'Spent (QAR)', 'Payment type', 'Status', 'Type'];
-  const rows = list.map((c) => [c.name, c.phone, c.plate, c.vehicle, c.service, c.discount, c.visits, c.daysSinceVisit, c.spent, c.payment, c.status, c.segment]);
+  const header = ['Name', 'Phone', 'Plate', 'Vehicle', 'Service', 'Discount', 'Visits', 'Days since last visit', 'Spent (QAR)', 'Payment type', 'Status', 'Type', 'Wallet (QAR)'];
+  const rows = list.map((c) => [c.name, c.phone, c.plate, c.vehicle, c.service, c.discount, c.visits, c.daysSinceVisit, c.spent, c.payment, c.status, c.segment, c.walletBalance]);
   const csv = [header, ...rows]
     .map((row) => row.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','))
     .join('\r\n');
@@ -319,7 +325,9 @@ function FilterSelect({ id, label, value, onChange, options, allLabel = 'All' })
 // ─────────────────────────────────────────────────────────────
 export default function CustomerDataPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [customers, setCustomers] = useState([]);
+  const [orderCustomers, setOrderCustomers] = useState([]);
+  const [wallets, setWallets] = useState(() => new Map());
+  const [walletFor, setWalletFor] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const [filters, setFilters] = useState(EMPTY_FILTERS);
@@ -329,11 +337,18 @@ export default function CustomerDataPage() {
 
   const toggleSidebar = useCallback(() => setSidebarOpen((v) => !v), []);
   const closePromo = useCallback(() => setShowPromo(false), []);
+  const closeWallet = useCallback(() => setWalletFor(null), []);
   const setFilter = (key) => (value) => setFilters((prev) => ({ ...prev, [key]: value }));
 
   const loadCustomers = useCallback(async () => {
     try {
-      setCustomers(buildCustomers(await fetchCarWashOrders()));
+      // A wallet failure must not hide the customers: balances just show as 0.
+      const [orders, walletRes] = await Promise.all([
+        fetchCarWashOrders(),
+        walletService.list().catch((err) => { console.error('Error loading wallets:', err); return null; }),
+      ]);
+      setOrderCustomers(buildCustomers(orders));
+      if (walletRes) setWallets(walletsByPhone(walletRes.data.data));
       setLoadError(null);
     } catch (error) {
       console.error('Error loading customers:', error);
@@ -352,6 +367,16 @@ export default function CustomerDataPage() {
     setLoadError(null);
     await loadCustomers();
   };
+
+  // Wallet balance per customer (by phone; one phone with two cars shares one wallet).
+  const customers = useMemo(
+    () => orderCustomers.map((c) => ({ ...c, walletBalance: (c.phone && wallets.get(phoneKey(c.phone))?.balance) || 0 })),
+    [orderCustomers, wallets],
+  );
+  const walletTotal = useMemo(() => [...wallets.values()].reduce((sum, w) => sum + (Number(w.balance) || 0), 0), [wallets]);
+  const onWalletChanged = useCallback((wallet) => {
+    setWallets((prev) => new Map(prev).set(phoneKey(wallet.phone), wallet));
+  }, []);
 
   const filtered = useMemo(() => customers.filter((c) => matchesFilters(c, filters)), [customers, filters]);
   const selectedList = useMemo(() => customers.filter((c) => selectedIds.has(c.id)), [customers, selectedIds]);
@@ -496,6 +521,10 @@ export default function CustomerDataPage() {
                   id="f-spent" label="Total spent" value={filters.spent} onChange={setFilter('spent')} allLabel="Any"
                   options={[['0-300', 'Below QAR 300'], ['300-800', 'QAR 300 – 799'], ['800+', 'QAR 800+']]}
                 />
+                <FilterSelect
+                  id="f-wallet" label="Wallet" value={filters.wallet} onChange={setFilter('wallet')} allLabel="Any"
+                  options={[['has', 'Has balance'], ['none', 'No balance']]}
+                />
               </div>
 
               {/* Actions */}
@@ -539,8 +568,11 @@ export default function CustomerDataPage() {
                     </button>
                   </span>
                 )}
-                <span className="ml-auto text-sm text-gray-500">
-                  Showing {filtered.length} of {customers.length} customers
+                <span className="ml-auto flex items-center gap-1.5 text-sm text-gray-500" title="Prepaid balance customers still have in their wallets">
+                  <Wallet className="w-4 h-4" aria-hidden="true" /> Wallets hold <b className="text-gray-800">{formatQar(walletTotal)}</b>
+                </span>
+                <span className="text-sm text-gray-500">
+                  · Showing {filtered.length} of {customers.length} customers
                 </span>
               </div>
 
@@ -555,7 +587,7 @@ export default function CustomerDataPage() {
               {/* Table */}
               <div className="p-4 sm:p-5">
                 <div ref={tableRef} className="overflow-auto max-h-[70vh] border border-gray-200 rounded-lg">
-                  <table className="w-full border-collapse min-w-[1250px]">
+                  <table className="w-full border-collapse min-w-[1350px]">
                     <thead>
                       <tr>
                         <th className="sticky top-0 z-10 bg-gray-50 pl-3.5 pr-1 py-2.5 border-b border-gray-200 w-8">
@@ -567,7 +599,7 @@ export default function CustomerDataPage() {
                             aria-label="Select all customers on this page"
                           />
                         </th>
-                        {['Customer', 'Phone', 'Plate', 'Vehicle', 'Favourite service', 'Discount', 'Visits', 'Last visit', 'Spent (QAR)', 'Payment type', 'Status', 'Type'].map((h) => (
+                        {['Customer', 'Phone', 'Plate', 'Vehicle', 'Favourite service', 'Discount', 'Visits', 'Last visit', 'Spent (QAR)', 'Payment type', 'Status', 'Type', 'Wallet'].map((h) => (
                           <th key={h} className="sticky top-0 z-10 text-left text-[10px] uppercase tracking-wide text-gray-500 font-semibold bg-gray-50 px-3 py-2.5 border-b border-gray-200 whitespace-nowrap">
                             {h}
                           </th>
@@ -610,6 +642,25 @@ export default function CustomerDataPage() {
                             <span className={`inline-flex px-3 py-1 rounded-full text-xs font-semibold ${SEGMENT_META[c.segment].pill}`}>
                               {c.segment}
                             </span>
+                          </td>
+                          <td className="px-3 py-3 whitespace-nowrap">
+                            {c.phone ? (
+                              <button
+                                type="button"
+                                onClick={() => setWalletFor({ name: c.name, phone: c.phone })}
+                                className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold border transition-colors ${
+                                  c.walletBalance > 0
+                                    ? 'border-[var(--primary)]/30 bg-[var(--primary-light)] text-[var(--primary)] hover:border-[var(--primary)]'
+                                    : 'border-gray-300 text-gray-600 hover:bg-gray-50'
+                                }`}
+                                aria-label={`Wallet of ${c.name}: ${formatQar(c.walletBalance)}`}
+                              >
+                                <Wallet className="w-3.5 h-3.5" aria-hidden="true" />
+                                {c.walletBalance > 0 ? formatQar(c.walletBalance) : 'Add'}
+                              </button>
+                            ) : (
+                              <span className="text-sm text-gray-400" title="A wallet needs a phone number">—</span>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -675,7 +726,7 @@ export default function CustomerDataPage() {
                 )}
 
                 <p className="text-[11px] text-gray-400 mt-3">
-                  Built from your car wash orders · Unpaid = the customer has at least one unpaid order · tick customers to send them a promotion
+                  Built from your car wash orders · Unpaid = the customer has at least one unpaid order · Wallet = prepaid balance, one per phone number · tick customers to send them a promotion
                 </p>
               </div>
             </div>
@@ -707,6 +758,10 @@ export default function CustomerDataPage() {
           onClose={closePromo}
           onSend={handleSend}
         />
+      )}
+
+      {walletFor && (
+        <WalletModal customer={walletFor} onClose={closeWallet} onChanged={onWalletChanged} />
       )}
 
       {toast && (

@@ -36,6 +36,7 @@ export const ROLE_PERMISSIONS = {
     canManageInventory: true,
     canDeleteInventory: true,
     canManageExpenses: true,
+    canRefundWallet: true,
   },
   [ROLES.ADMIN]: {
     canAccessDashboard: true,
@@ -52,6 +53,7 @@ export const ROLE_PERMISSIONS = {
     canManageInventory: true,
     canDeleteInventory: false,
     canManageExpenses: false,
+    canRefundWallet: false,
   },
 };
 
