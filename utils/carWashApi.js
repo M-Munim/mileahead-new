@@ -45,7 +45,7 @@ import { servicesPrice, findExtra, joinServices, splitServices, tokensFor } from
 
 export const CAR_WASH_SERVICE = 'car wash';
 export const APPOINTMENT_SERVICE = 'appointment';
-export const ORDER_SOURCE = { DASHBOARD: 'walk-in', KIOSK: 'kiosk', APPOINTMENT: 'appointment' };
+export const ORDER_SOURCE = { DASHBOARD: 'walk-in', KIOSK: 'kiosk', APPOINTMENT: 'appointment', APP: 'app' };
 
 /** Where the car is. Shown on the queue screen (/queue) and changed from the dashboard. */
 export const STAGES = ['waiting', 'washing', 'ready', 'collected'];
@@ -126,6 +126,7 @@ function bookingServices(b) {
 /** Backend booking → dashboard order. */
 export function mapBookingToOrder(b) {
   const isKiosk = b.service_type === ORDER_SOURCE.KIOSK;
+  const isApp = b.service_type === ORDER_SOURCE.APP; // placed by the customer in the mobile app
   const rawStatus = String(b.status || '').toLowerCase();
   const paymentStatus = String(b.payment_status || '').toLowerCase();
   const paidFrom = paymentStatus || rawStatus;
@@ -144,7 +145,7 @@ export function mapBookingToOrder(b) {
   return {
     id: String(b.booking_number || b.id),
     originalId: b.id,
-    source: isKiosk ? 'kiosk' : 'dashboard',
+    source: isKiosk ? 'kiosk' : isApp ? 'app' : 'dashboard',
     tokens,
     queue: tokens.join(' · '), // for text: toasts, messages, search
     customer: { name: b.passenger_name || 'Walk-in customer', phone: b.contact_number || '' },
@@ -228,8 +229,11 @@ const bookingFromResponse = (res) => res.data?.booking || res.data?.data || null
 // ─────────────────────────────────────────────────────────────
 // Orders
 // ─────────────────────────────────────────────────────────────
+/** Car wash orders. One the customer cancelled in the app (before washing started) is left out. */
 export async function fetchCarWashOrders() {
-  return (await fetchAllBookings(CAR_WASH_SERVICE)).map(mapBookingToOrder);
+  return (await fetchAllBookings(CAR_WASH_SERVICE))
+    .filter((b) => !String(b.status || '').toLowerCase().startsWith('cancelled'))
+    .map(mapBookingToOrder);
 }
 
 /**

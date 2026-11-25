@@ -509,6 +509,7 @@ function OrderDrawer({
   const isPaid = order.status === 'paid';
   const kv = [
     ...(order.source === 'kiosk' ? [['Placed from', `Kiosk · Queue ${order.queue}`]] : []),
+    ...(order.source === 'app' ? [['Placed from', `Customer app · Queue ${order.queue}`]] : []),
     ['Token number', order.tokens?.join(' · ') || order.queue || '—'],
     ['Service', serviceLabel(order)],
     ['Vehicle', order.vehicle],
@@ -798,9 +799,10 @@ export default function OrdersPage() {
       const list = ordersResult.value;
       if (background && knownOrderIds.current) {
         const fresh = list.filter((o) => !knownOrderIds.current.has(o.id));
-        const kiosk = fresh.filter((o) => o.source === 'kiosk');
+        const kiosk = fresh.filter((o) => o.source === 'kiosk' || o.source === 'app');
         if (kiosk.length === 1) {
-          setToast({ message: `New kiosk order — queue ${kiosk[0].queue} (${serviceLabel(kiosk[0])}, ${formatQar(kiosk[0].total)})`, type: 'success' });
+          const from = kiosk[0].source === 'app' ? 'app' : 'kiosk';
+          setToast({ message: `New ${from} order — queue ${kiosk[0].queue} (${serviceLabel(kiosk[0])}, ${formatQar(kiosk[0].total)})`, type: 'success' });
         } else if (fresh.length > 0) {
           setToast({ message: `${fresh.length} new order${fresh.length === 1 ? '' : 's'} received`, type: 'success' });
         }
@@ -1511,12 +1513,17 @@ export default function OrdersPage() {
                           </td>
                           <td className="px-3.5 py-3 text-sm font-semibold text-gray-900 whitespace-nowrap">
                             #{o.id}
-                            {o.source !== 'kiosk' && o.stage !== 'collected' && (
+                            {o.source !== 'kiosk' && o.source !== 'app' && o.stage !== 'collected' && (
                               <span className="block text-[11px] font-medium text-gray-400 mt-0.5">Queue {o.queue}</span>
                             )}
                             {o.source === 'kiosk' && (
                               <span className="block mt-1 w-fit px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[var(--primary-light)] text-[var(--primary-dark)]">
                                 Kiosk · {o.queue}
+                              </span>
+                            )}
+                            {o.source === 'app' && (
+                              <span className="block mt-1 w-fit px-2 py-0.5 rounded-full text-[10px] font-semibold bg-sky-50 text-sky-700">
+                                App · {o.queue}
                               </span>
                             )}
                           </td>
