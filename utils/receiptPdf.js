@@ -16,7 +16,7 @@ const isLatin = (text) => /^[\u0000-ɏ–—·]*$/.test(String(text ?? ''));
 const latin = (text) => String(text ?? '').replace(/[^\u0000-ɏ–—·]/g, '?');
 
 /** The receipt as a PDF Blob. */
-export async function buildReceiptPdf(order) {
+export async function buildReceiptPdf(order, { walletBalance } = {}) {
   const [{ jsPDF }, tableModule] = await Promise.all([import('jspdf'), import('jspdf-autotable')]);
   // The function sits on .default in a bundler, or one level deeper via CommonJS interop.
   const autoTable = [tableModule.default, tableModule.default?.default, tableModule.autoTable]
@@ -98,6 +98,8 @@ export async function buildReceiptPdf(order) {
       : []),
     ['Total', qar(order.total)],
     ['Payment', [order.paymentMethod, order.paymentType, order.status === 'paid' ? 'Paid' : 'Unpaid'].filter(Boolean).map(latin).join(' · ')],
+    // Paid from the wallet: what is left in it
+    ...(walletBalance !== undefined && walletBalance !== null ? [['Wallet balance left', qar(walletBalance)]] : []),
   ];
   autoTable(doc, {
     startY: doc.lastAutoTable.finalY + 2,

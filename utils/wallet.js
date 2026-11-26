@@ -23,3 +23,9 @@ export const phoneKey = (phone) => String(phone || '').replace(/\D/g, '').slice(
 
 /** phoneKey → wallet, for looking up a customer's balance. */
 export const walletsByPhone = (wallets) => new Map((wallets || []).map((w) => [phoneKey(w.phone), w]));
+
+/** An order paid from a wallet has this payment method (set by the server, never typed). */
+export const WALLET_METHOD = 'Wallet';
+
+/** True when the order was paid from the customer's wallet. */
+export const paidFromWallet = (order) => order?.status === 'paid' && order?.paymentMethod === WALLET_METHOD;

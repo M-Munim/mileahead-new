@@ -7,6 +7,8 @@ import {
   SERVICE_GROUPS, EXTRAS, OTHER_SERVICES_TITLE, DISCOUNTS, PAYMENT_METHODS, PAYMENT_TYPES, COUPON_RATE,
   vehiclesForServices, servicesPrice, priceFor, applyDiscount, couponApplies,
 } from '../../utils/priceList';
+import { walletService } from '../../utils/axiosInstance';
+import { WALLET_METHOD, formatQar } from '../../utils/wallet';
 
 /**
  * Manual order entry — the person running the car wash center enters each
@@ -80,6 +82,23 @@ export default function NewOrderModal({ onClose, onSubmit }) {
     return () => { document.body.style.overflow = ''; };
   }, []);
 
+  // The customer's wallet, looked up once the phone number is complete (debounced)
+  const phoneDigits = form.phone.replace(/D/g, '');
+  const [walletFor, setWalletFor] = useState({ key: '', wallet: null });
+  useEffect(() => {
+    if (phoneDigits.length < 8) return undefined;
+    let live = true;
+    const timer = setTimeout(() => {
+      walletService.get(phoneDigits)
+        .then((res) => { if (live) setWalletFor({ key: phoneDigits, wallet: res.data?.data?.wallet || null }); })
+        .catch(() => { if (live) setWalletFor({ key: phoneDigits, wallet: null }); });
+    }, 400);
+    return () => { live = false; clearTimeout(timer); };
+  }, [phoneDigits]);
+  const wallet = walletFor.key === phoneDigits ? walletFor.wallet : null;
+  const walletBalance = Number(wallet?.balance || 0);
+  const byWallet = form.paymentMethod === WALLET_METHOD;
+
   const vehicleOptions = vehiclesForServices(form.services);
   const subtotal = useMemo(
     () => priceFor(form.services, form.vehicle, form.extras),
@@ -101,6 +120,8 @@ export default function NewOrderModal({ onClose, onSubmit }) {
     setForm((prev) => {
       const next = { ...prev, [name]: value };
       if (name === 'discount' && value !== 'Coupon') next.couponSerial = '';
+      // Paying from the wallet means paid now, with no payment type
+      if (name === 'paymentMethod' && value === WALLET_METHOD) { next.paymentStatus = 'paid'; next.paymentType = ''; }
       return next;
     });
     clearError(name);
@@ -147,6 +168,11 @@ export default function NewOrderModal({ onClose, onSubmit }) {
     if (values.discount === 'Coupon' && !values.couponSerial) next.couponSerial = 'Coupon serial number is required';
     if (totalValue !== '' && (!Number.isFinite(Number(totalValue)) || Number(totalValue) < 0)) {
       next.total = 'Enter a valid total of 0 or more';
+    }
+    if (values.paymentMethod === WALLET_METHOD) {
+      if (!wallet) next.paymentMethod = 'This phone number has no wallet';
+      else if (!(Number(totalValue) > 0)) next.paymentMethod = 'The total must be more than 0 to pay from the wallet';
+      else if (Number(totalValue) > walletBalance) next.paymentMethod = `The wallet has ${formatQar(walletBalance)}, less than the total. Add balance in Customer Data first.`;
     }
     return next;
   };
@@ -360,12 +386,21 @@ export default function NewOrderModal({ onClose, onSubmit }) {
               <select {...fieldProps('paymentMethod')}>
                 <option value="">Select payment method</option>
                 {PAYMENT_METHODS.map((p) => <option key={p} value={p}>{p}</option>)}
+                {(wallet && walletBalance > 0) || byWallet ? (
+                  <option value={WALLET_METHOD}>Wallet (balance {formatQar(walletBalance)})</option>
+                ) : null}
               </select>
               <FieldError id="new-order-paymentMethod-error" message={errors.paymentMethod} />
+              {!errors.paymentMethod && wallet && walletBalance > 0 && !byWallet && (
+                <p className="mt-1 text-[11px] text-gray-500">This customer has {formatQar(walletBalance)} in their wallet.</p>
+              )}
+              {!errors.paymentMethod && byWallet && (
+                <p className="mt-1 text-[11px] text-gray-500">The total is taken from the wallet when the order is saved.</p>
+              )}
             </div>
             <div>
               <label htmlFor="new-order-paymentType">Payment Type <span className="text-gray-400 font-normal">(optional)</span></label>
-              <select {...fieldProps('paymentType')}>
+              <select {...fieldProps('paymentType')} disabled={byWallet}>
                 <option value="">None</option>
                 {PAYMENT_TYPES.map((p) => <option key={p} value={p}>{p}</option>)}
               </select>
@@ -392,6 +427,7 @@ export default function NewOrderModal({ onClose, onSubmit }) {
                         value={opt.value}
                         checked={checked}
                         onChange={handleChange}
+                        disabled={byWallet}
                         className="sr-only"
                       />
                       {opt.label}

@@ -48,9 +48,14 @@ export async function downloadDayReportPdf(report, { printedBy } = {}) {
   // ── Headline figures ──
   const cards = [
     ['Total collected', qar(report.collected), `${report.paidCount} paid orders`],
-    ['Cash', qar(report.byChannel.cash.amount), `${report.byChannel.cash.count} orders`],
-    ['Card', qar(report.byChannel.card.amount), `${report.byChannel.card.count} orders`],
-    ['Online (Fawran)', qar(report.byChannel.online.amount), `${report.byChannel.online.count} orders`],
+    ...['cash', 'card', 'online'].map((key) => [
+      { cash: 'Cash', card: 'Card', online: 'Online (Fawran)' }[key],
+      qar(report.moneyIn[key]),
+      `${report.byChannel[key].count} orders${report.wallet.topups[key] ? ` + ${qar(report.wallet.topups[key])} wallet top-ups` : ''}`,
+    ]),
+    ...(report.byChannel.wallet.count
+      ? [['Paid from wallet', qar(report.byChannel.wallet.amount), `${report.byChannel.wallet.count} orders (not in the total)`]]
+      : []),
     ['Still to collect', qar(report.stillToCollect.amount), `${report.stillToCollect.count} unpaid`],
     ['Discounts given', qar(report.discountTotal), `${report.orders.length} orders in total`],
   ];
@@ -130,7 +135,7 @@ export async function downloadDayReportPdf(report, { printedBy } = {}) {
       qar(o.total),
       paymentModeOf(o),
     ]),
-    foot: [['', '', '', '', '', '', '', 'Total Net Amount (paid orders)', '', qar(report.collected), '']],
+    foot: [['', '', '', '', '', '', '', 'Total Net Amount (money in)', '', qar(report.collected), '']],
     theme: 'striped',
     styles: { fontSize: 7.5, cellPadding: 1.4, overflow: 'linebreak' },
     headStyles: { fillColor: BLACK, textColor: 255 },

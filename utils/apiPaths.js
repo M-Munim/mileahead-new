@@ -159,6 +159,9 @@ export const API_PATHS = {
         GET: "/api/v1/wallet",
         TOPUP: "/api/v1/wallet/topup",
         REFUND: "/api/v1/wallet/refund",
+        PAY: "/api/v1/wallet/pay",
+        UNDO_PAYMENT: "/api/v1/wallet/undo-payment",
+        TRANSACTIONS: "/api/v1/wallet/transactions",
     },
 
     // Job cards: the work order for one visit

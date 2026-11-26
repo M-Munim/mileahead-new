@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Search, Phone, X, Clock, Droplets, CheckCircle,
   RefreshCw, ClipboardList, Copy, Trash2, MessageCircle, Plus, CalendarPlus, CalendarDays,
-  Loader2, AlertCircle, ChevronLeft, ChevronRight,
+  Loader2, AlertCircle, ChevronLeft, ChevronRight, Wallet as WalletIcon,
 } from 'lucide-react';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
@@ -25,6 +25,8 @@ import {
   fetchDeletedBookingHistory, saveOrderReceipt, updateOrderPrice as saveOrderPrice, fetchPriceChangeHistory,
   leftOpen, dayText,
 } from '../../utils/carWashApi';
+import { walletService } from '../../utils/axiosInstance';
+import { WALLET_METHOD, paidFromWallet } from '../../utils/wallet';
 
 /**
  * The table shows this many orders per page (all orders are loaded; paging is
@@ -140,7 +142,7 @@ const buildReceiptMessage = (order, receiptUrl) => {
     order.tokens?.length ? `Token: *${order.tokens.join(' · ')}*` : null,
     `Car: ${order.vehicle || '—'}${order.numberPlate ? ` (${order.numberPlate})` : ''}`,
     `Services: ${[serviceLabel(order), ...(order.extras || [])].join(', ')}`,
-    `Total: ${formatQar(order.total)} (${order.status === 'paid' ? 'Paid' : 'Unpaid'})`,
+    `Total: ${formatQar(order.total)} (${paidFromWallet(order) ? 'Paid from your wallet' : order.status === 'paid' ? 'Paid' : 'Unpaid'})`,
     '',
     `Your receipt (PDF): ${receiptUrl}`,
   ];
@@ -492,8 +494,23 @@ function EditableOrderTotal({ order, busy, onSave }) {
 // Order detail drawer
 // ─────────────────────────────────────────────────────────────
 function OrderDrawer({
-  order, onClose, onTogglePaid, onChangeStage, onCopyMessage, canDelete, onDelete, busy,
+  order, onClose, onTogglePaid, onPayWallet, onUndoWallet, onChangeStage, onCopyMessage, canDelete, onDelete, busy,
 }) {
+  // The customer's wallet balance (undefined while loading, null when they have none)
+  // (loaded again when the phone or the paid status changes)
+  const phone = order?.customer.phone;
+  const walletKey = phone ? `${phone}|${order?.status}` : null;
+  const [walletFor, setWalletFor] = useState({ key: null, wallet: null });
+  useEffect(() => {
+    if (!phone) return undefined;
+    let live = true;
+    walletService.get(phone)
+      .then((res) => { if (live) setWalletFor({ key: walletKey, wallet: res.data?.data?.wallet || null }); })
+      .catch(() => { if (live) setWalletFor({ key: walletKey, wallet: null }); });
+    return () => { live = false; };
+  }, [phone, walletKey]);
+  const wallet = !phone ? null : walletFor.key === walletKey ? walletFor.wallet : undefined;
+
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', onKey);
@@ -707,7 +724,22 @@ function OrderDrawer({
 
         {/* Actions */}
         <div className="px-5 py-4 border-t border-gray-200 flex flex-col gap-2">
-          {isPaid ? (
+          {isPaid && paidFromWallet(order) ? (
+            <>
+              <div className="w-full py-3 text-[13px] font-semibold flex items-center justify-center gap-2 bg-green-50 text-green-700 rounded">
+                <WalletIcon className="w-4 h-4" aria-hidden="true" /> Paid from wallet
+                {wallet ? <span className="font-normal text-green-800">· balance left {formatQar(wallet.balance)}</span> : null}
+              </div>
+              <button
+                type="button"
+                onClick={() => onUndoWallet(order)}
+                disabled={busy}
+                className="text-[12px] text-gray-500 hover:text-gray-800 underline disabled:opacity-50"
+              >
+                Undo wallet payment (money goes back to the wallet)
+              </button>
+            </>
+          ) : isPaid ? (
             <>
               <div className="w-full py-3 text-[13px] font-semibold flex items-center justify-center gap-2 bg-green-50 text-green-700 rounded">
                 <CheckCircle className="w-4 h-4" aria-hidden="true" /> Paid{order.paidAt ? ` at ${order.paidAt}` : ''}
@@ -722,13 +754,31 @@ function OrderDrawer({
               </button>
             </>
           ) : (
-            <button
-              onClick={() => onTogglePaid(order)}
-              disabled={busy}
-              className={`w-full py-3 text-[13px] font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-60 ${TONE.green}`}
-            >
-              {busy ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : <CheckCircle className="w-4 h-4" aria-hidden="true" />} Mark as Paid
-            </button>
+            <>
+              <button
+                onClick={() => onTogglePaid(order)}
+                disabled={busy}
+                className={`w-full py-3 text-[13px] font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-60 ${TONE.green}`}
+              >
+                {busy ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : <CheckCircle className="w-4 h-4" aria-hidden="true" />} Mark as Paid
+              </button>
+              {wallet && Number(wallet.balance) > 0 && (
+                Number(wallet.balance) >= Number(order.total) && Number(order.total) > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => onPayWallet(order)}
+                    disabled={busy}
+                    className="w-full py-3 text-[13px] font-semibold flex items-center justify-center gap-2 border border-[var(--primary)] text-[var(--primary)] hover:bg-[var(--primary-light)] transition-colors disabled:opacity-60"
+                  >
+                    <WalletIcon className="w-4 h-4" aria-hidden="true" /> Pay from wallet · balance {formatQar(wallet.balance)}
+                  </button>
+                ) : (
+                  <p className="text-[12px] text-gray-500 text-center">
+                    Wallet balance {formatQar(wallet.balance)} is less than the total. Add balance in Customer Data to pay from the wallet.
+                  </p>
+                )
+              )}
+            </>
           )}
           <a
             href={telHref(order.customer.phone)}
@@ -1024,8 +1074,21 @@ export default function OrdersPage() {
   }, [pendingDelete, canDelete, selectedId]);
 
   // New order: saved on the server first; throws so the form keeps the data and shows why.
+  // Wallet: the order is saved unpaid, then paid from the wallet on the server.
   const handleCreateOrder = useCallback(async (values) => {
-    const created = await createCarWashOrder(values);
+    const byWallet = values.paymentMethod === WALLET_METHOD;
+    let created = await createCarWashOrder(byWallet ? { ...values, paymentMethod: '', paymentType: '', paymentStatus: 'unpaid' } : values);
+    let walletNote = '';
+    let walletError = '';
+    if (byWallet && created) {
+      try {
+        const res = await walletService.payOrder(created.originalId);
+        created = { ...created, status: 'paid', paymentMethod: WALLET_METHOD, hasPaymentStatus: true };
+        walletNote = ` and paid from the wallet · balance left ${formatQar(res.data?.data?.wallet?.balance)}`;
+      } catch (error) {
+        walletError = error.message || 'server error';
+      }
+    }
     if (created) setOrders((prev) => [created, ...prev.filter((o) => o.id !== created.id)]);
     else await loadData();
     setShowNewOrder(false);
@@ -1033,7 +1096,11 @@ export default function OrdersPage() {
     setQuery('');
     // Open the new order, so staff can send the customer their receipt straight away.
     if (created) setSelectedId(created.id);
-    setToast({ message: `Order${created ? ` #${created.id}` : ''} for ${values.customerName} saved`, type: 'success' });
+    if (walletError) {
+      setToast({ message: `Order #${created.id} saved but NOT paid: ${walletError}`, type: 'error' });
+    } else {
+      setToast({ message: `Order${created ? ` #${created.id}` : ''} for ${values.customerName} saved${walletNote}`, type: 'success' });
+    }
   }, [loadData]);
 
   // Payment method / type changed from the table: shown at once, undone if the save fails.
@@ -1130,6 +1197,37 @@ export default function OrdersPage() {
       console.error(`Error updating status for #${order.id}:`, error);
       setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status: order.status, paidAt: order.paidAt } : o)));
       setToast({ message: `Could not mark #${order.id} as ${STATUS_META[next].label}: ${error.message || 'server error'}`, type: 'error' });
+    } finally {
+      setBusy(order.id, false);
+    }
+  }, [busyIds, setBusy]);
+
+  // Pay the whole order from the customer's wallet (the server takes the balance and marks it paid together)
+  const payWithWallet = useCallback(async (order) => {
+    if (busyIds.has(order.id)) return;
+    setBusy(order.id, true);
+    try {
+      const res = await walletService.payOrder(order.originalId);
+      const left = res.data?.data?.wallet?.balance;
+      setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status: 'paid', paymentMethod: WALLET_METHOD, paymentType: '', hasPaymentStatus: true } : o)));
+      setToast({ message: `#${order.id} paid from the wallet${left !== undefined ? ` · balance left ${formatQar(left)}` : ''}`, type: 'success' });
+    } catch (error) {
+      setToast({ message: `Could not pay #${order.id} from the wallet: ${error.message || 'server error'}`, type: 'error' });
+    } finally {
+      setBusy(order.id, false);
+    }
+  }, [busyIds, setBusy]);
+
+  const undoWalletPayment = useCallback(async (order) => {
+    if (busyIds.has(order.id)) return;
+    setBusy(order.id, true);
+    try {
+      const res = await walletService.undoPayment(order.originalId);
+      const returned = res.data?.data?.returned;
+      setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status: 'unpaid', paymentMethod: '', paidAt: undefined } : o)));
+      setToast({ message: `#${order.id} is unpaid again · ${formatQar(returned ?? order.total)} returned to the wallet`, type: 'success' });
+    } catch (error) {
+      setToast({ message: `Could not undo the wallet payment of #${order.id}: ${error.message || 'server error'}`, type: 'error' });
     } finally {
       setBusy(order.id, false);
     }
@@ -1561,6 +1659,11 @@ export default function OrdersPage() {
                           </td>
                           <td className="px-3.5 py-3 text-sm text-gray-700 whitespace-nowrap">{discountLabel(o)}</td>
                           <td className="px-3.5 py-3" onClick={(e) => e.stopPropagation()}>
+                            {paidFromWallet(o) ? (
+                              <span className="inline-flex items-center gap-1 text-[13px] font-medium text-[var(--primary)]" title="Paid from the customer's wallet. Undo it in the order details.">
+                                <WalletIcon className="w-3.5 h-3.5" aria-hidden="true" /> Wallet
+                              </span>
+                            ) : (
                             <select
                               value={o.paymentMethod}
                               onChange={(e) => updateOrderField(o, 'paymentMethod', e.target.value, 'payment method')}
@@ -1572,6 +1675,7 @@ export default function OrdersPage() {
                               {!o.paymentMethod && <option value="">—</option>}
                               {PAYMENT_METHODS.map((p) => <option key={p}>{p}</option>)}
                             </select>
+                            )}
                           </td>
                           <td className="px-3.5 py-3" onClick={(e) => e.stopPropagation()}>
                             <select
@@ -1587,11 +1691,15 @@ export default function OrdersPage() {
                             </select>
                           </td>
                           <td className="px-3.5 py-3" onClick={(e) => e.stopPropagation()}>
-                            <EditableOrderTotal
-                              order={o}
-                              busy={busyIds.has(o.id)}
-                              onSave={updatePrice}
-                            />
+                            {paidFromWallet(o) ? (
+                              <span className="text-sm font-semibold text-gray-900 whitespace-nowrap" title="Paid from the wallet: undo the wallet payment to change the price.">{formatQar(o.total)}</span>
+                            ) : (
+                              <EditableOrderTotal
+                                order={o}
+                                busy={busyIds.has(o.id)}
+                                onSave={updatePrice}
+                              />
+                            )}
                           </td>
                           <td className="px-3.5 py-3 text-sm text-gray-700 whitespace-nowrap">{o.time}</td>
                           <td className="px-3.5 py-3"><StatusPill status={o.status} /></td>
@@ -1697,6 +1805,8 @@ export default function OrdersPage() {
           order={selectedOrder}
           onClose={() => setSelectedId(null)}
           onTogglePaid={togglePaid}
+          onPayWallet={payWithWallet}
+          onUndoWallet={undoWalletPayment}
           onChangeStage={changeStage}
           onCopyMessage={handleCopyMessage}
           canDelete={canDelete}

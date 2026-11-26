@@ -37,7 +37,8 @@
 // Their column types are not documented, so if the server rejects them the
 // order is saved again without them rather than lost (see createCarWashOrder).
 
-import { activityLogService, bookingService } from './axiosInstance';
+import { activityLogService, bookingService, walletService } from './axiosInstance';
+import { paidFromWallet } from './wallet';
 import { BASE_URL } from './apiPaths';
 import { extractArray } from './extractArray';
 import { servicesPrice, findExtra, joinServices, splitServices, tokensFor } from './priceList';
@@ -459,8 +460,17 @@ export const deleteOrder = (order, reason) => bookingService.deleteBooking(order
 /** Makes the order's receipt PDF and stores it on the server; resolves to its public link. */
 export async function saveOrderReceipt(order) {
   const { buildReceiptPdf } = await import('./receiptPdf');
+  // Paid from the wallet: the receipt shows the balance left
+  let walletBalance;
+  if (paidFromWallet(order)) {
+    try {
+      walletBalance = (await walletService.get(order.customer.phone)).data?.data?.wallet?.balance;
+    } catch {
+      walletBalance = undefined; // the receipt is still made, without the balance
+    }
+  }
   const fd = new FormData();
-  fd.append('file', await buildReceiptPdf(order), `receipt-${order.id}.pdf`);
+  fd.append('file', await buildReceiptPdf(order, { walletBalance }), `receipt-${order.id}.pdf`);
   const res = await bookingService.uploadReceipt(order.originalId, fd, MULTIPART);
   const url = res.data?.data?.url;
   if (!url) throw new Error('The server did not return a receipt link.');

@@ -7,6 +7,11 @@
 //     Online (bank transfer), whatever the method says.
 //   - Paylater and Partner Credit are credit: not collected until marked Paid,
 //     shown under "Still to collect" with every other unpaid order.
+//
+// Customer wallet (Nov 2026): a top-up is money in on the day it is paid, in
+// its own channel (Cash / Card / Fawran = Online). An order paid from the
+// wallet is a sale but not new money, so it is shown on its own and left out
+// of the money collected. A wallet refund is money out (Total Refund).
 
 import { OTHER_SERVICES_TITLE } from './priceList';
 
@@ -15,7 +20,11 @@ export const CHANNELS = [
   { key: 'card', label: 'Card' },
   { key: 'online', label: 'Online (Fawran)' },
   { key: 'unspecified', label: 'Method not recorded' },
+  { key: 'wallet', label: 'Paid from wallet' },
 ];
+
+/** Wallet top-up / refund payment method → channel. */
+const WALLET_CHANNEL = { Cash: 'cash', Card: 'card', Fawran: 'online' };
 
 const CREDIT_TYPES = ['Paylater', 'Partner Credit'];
 
@@ -23,6 +32,7 @@ const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
 /** Where the money of a paid order went. */
 export const channelOf = (order) => {
+  if (order.paymentMethod === 'Wallet') return 'wallet';
   if (order.paymentType === 'Fawran') return 'online';
   if (order.paymentMethod === 'Cash') return 'cash';
   if (order.paymentMethod === 'Card') return 'card';
@@ -56,8 +66,34 @@ export function rangeLabel(from, to) {
   return from === to ? fmt(from, true) : `${fmt(from, false)} – ${fmt(to, true)}`;
 }
 
+/**
+ * Wallet top-ups, bonus credit and refunds made from..to (local days), from
+ * GET /wallet/transactions.
+ */
+export function walletDay(transactions, from, to) {
+  const blank = () => ({ cash: 0, card: 0, online: 0, total: 0, count: 0 });
+  const out = { topups: blank(), refunds: blank(), bonus: 0, bonusCount: 0 };
+  (transactions || []).forEach((t) => {
+    const day = isoDate(new Date(t.created_at));
+    if (day < from || day > to) return;
+    if (t.type === 'bonus') {
+      out.bonus = round2(out.bonus + Number(t.amount));
+      out.bonusCount += 1;
+      return;
+    }
+    const bucket = t.type === 'topup' ? out.topups : t.type === 'refund' ? out.refunds : null;
+    if (!bucket) return; // order payments come from the orders themselves
+    const amount = Math.abs(Number(t.amount) || 0);
+    const ch = WALLET_CHANNEL[t.payment_method] || 'cash';
+    bucket[ch] = round2(bucket[ch] + amount);
+    bucket.total = round2(bucket.total + amount);
+    bucket.count += 1;
+  });
+  return out;
+}
+
 /** Everything the Day Close page, the Excel file and the WhatsApp summary show. */
-export function buildDayReport(orders, from, to) {
+export function buildDayReport(orders, from, to, walletTransactions = []) {
   const inRange = orders
     .filter((o) => o.date && o.date >= from && o.date <= to)
     .sort((a, b) => (a.originalId || 0) - (b.originalId || 0)); // oldest first, like a receipt book
@@ -71,7 +107,10 @@ export function buildDayReport(orders, from, to) {
     c.count += 1;
     c.amount = round2(c.amount + (Number(o.total) || 0));
   });
-  const collected = round2(paid.reduce((sum, o) => sum + (Number(o.total) || 0), 0));
+  // Money in: paid orders (not the wallet-paid ones) + wallet top-ups − wallet refunds
+  const wallet = walletDay(walletTransactions, from, to);
+  const ordersMoney = round2(paid.filter((o) => channelOf(o) !== 'wallet').reduce((sum, o) => sum + (Number(o.total) || 0), 0));
+  const collected = round2(ordersMoney + wallet.topups.total - wallet.refunds.total);
 
   const credit = unpaid.filter((o) => CREDIT_TYPES.includes(o.paymentType));
   const owed = (list) => round2(list.reduce((sum, o) => sum + (Number(o.total) || 0), 0));
@@ -109,6 +148,13 @@ export function buildDayReport(orders, from, to) {
     unpaid,
     collected,
     byChannel,
+    wallet,
+    // Each channel's money: its orders plus the wallet top-ups paid that way
+    moneyIn: {
+      cash: round2(byChannel.cash.amount + wallet.topups.cash),
+      card: round2(byChannel.card.amount + wallet.topups.card),
+      online: round2(byChannel.online.amount + wallet.topups.online),
+    },
     stillToCollect: { count: unpaid.length, amount: owed(unpaid) },
     credit: { count: credit.length, amount: owed(credit) },
     discounts: Object.entries(discounts).map(([type, v]) => ({ type, ...v })),
@@ -126,7 +172,7 @@ export function paymentModeOf(order) {
   if (order.status !== 'paid') {
     return CREDIT_TYPES.includes(order.paymentType) ? `Unpaid (${order.paymentType})` : 'Unpaid';
   }
-  return { cash: 'Cash', card: 'Card', online: 'Online', unspecified: 'Paid' }[channelOf(order)];
+  return { cash: 'Cash', card: 'Card', online: 'Online', unspecified: 'Paid', wallet: 'Wallet' }[channelOf(order)];
 }
 
 /**
@@ -136,14 +182,23 @@ export function paymentModeOf(order) {
  */
 export function summaryLines(report) {
   return [
-    { label: 'Total Cash', amount: report.byChannel.cash.amount },
-    { label: 'Total Card', amount: report.byChannel.card.amount },
+    { label: 'Total Cash', amount: report.moneyIn.cash },
+    { label: 'Total Card', amount: report.moneyIn.card },
     { label: 'Total Cheque', amount: 0 },
-    { label: 'Total Online Payment', amount: report.byChannel.online.amount },
+    { label: 'Total Online Payment', amount: report.moneyIn.online },
     ...(report.byChannel.unspecified.count
       ? [{ label: 'Paid, method not recorded', amount: report.byChannel.unspecified.amount }]
       : []),
-    { label: 'Total Refund', amount: 0 },
+    ...(report.wallet.topups.count
+      ? [{ label: 'of which wallet top-ups', amount: report.wallet.topups.total, note: true }]
+      : []),
+    ...(report.byChannel.wallet.count
+      ? [{ label: 'Orders paid from wallet (not new money)', amount: report.byChannel.wallet.amount, note: true }]
+      : []),
+    ...(report.wallet.bonus
+      ? [{ label: 'Wallet bonus credit given', amount: report.wallet.bonus, note: true }]
+      : []),
+    { label: 'Total Refund', amount: report.wallet.refunds.total },
     { label: 'Total Cancelled', amount: 0 },
     { label: 'Total Net Amount', amount: report.collected, strong: true },
   ];

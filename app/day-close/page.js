@@ -10,6 +10,7 @@ import Header from '../components/Header';
 import Toast from '../components/Toast';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchCarWashOrders, openOrdersUpTo, dayText } from '../../utils/carWashApi';
+import { walletService } from '../../utils/axiosInstance';
 import { formatQar } from '../../utils/priceList';
 import { getWhatsAppUrl } from '../../utils/location';
 import { downloadDayReportPdf } from '../../utils/dayClosePdf';
@@ -81,6 +82,13 @@ function Panel({ icon: Icon, title, children }) {
 const TH = 'text-left text-[10px] uppercase tracking-wide text-gray-500 font-semibold bg-gray-50 px-3 py-2 border-b border-gray-200 whitespace-nowrap print:px-1.5 print:py-1 print:text-[8px] print:whitespace-normal';
 const TD = 'px-3 py-2 text-[13px] text-gray-700 whitespace-nowrap print:px-1.5 print:py-1 print:text-[9px] print:whitespace-normal';
 
+/** "3 orders + QAR 500 top-ups" under a channel card. */
+const channelSub = (report, key) => {
+  const orders = `${report.byChannel[key].count} orders`;
+  const topups = report.wallet.topups[key];
+  return topups ? `${orders} + ${formatQar(topups)} wallet top-ups` : orders;
+};
+
 export default function DayClosePage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [orders, setOrders] = useState([]);
@@ -118,7 +126,17 @@ export default function DayClosePage() {
   // "To" can't be before "From".
   const start = from <= to ? from : to;
   const end = from <= to ? to : from;
-  const report = useMemo(() => buildDayReport(orders, start, end), [orders, start, end]);
+  // Wallet top-ups and refunds of the chosen days (money in / out of the till)
+  const [walletTxns, setWalletTxns] = useState({ key: '', list: [], error: '' });
+  const walletKey = `${start}|${end}|${orders.length}`;
+  useEffect(() => {
+    let live = true;
+    walletService.transactions(start, end)
+      .then((res) => { if (live) setWalletTxns({ key: walletKey, list: res.data?.data || [], error: '' }); })
+      .catch((error) => { if (live) setWalletTxns({ key: walletKey, list: [], error: error?.message || 'server error' }); });
+    return () => { live = false; };
+  }, [start, end, walletKey]);
+  const report = useMemo(() => buildDayReport(orders, start, end, walletTxns.list), [orders, start, end, walletTxns.list]);
   const label = rangeLabel(start, end);
   // Cars still Waiting / Washing / Ready: close them before closing the day.
   const stillOpen = useMemo(() => openOrdersUpTo(orders, end), [orders, end]);
@@ -288,10 +306,16 @@ export default function DayClosePage() {
               <>
                 {/* Totals */}
                 <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
-                  <StatCard icon={Receipt} label="Total collected" value={formatQar(report.collected)} sub={`${report.paidCount} paid orders`} tone="primary" />
-                  <StatCard icon={Banknote} label="Cash" value={formatQar(report.byChannel.cash.amount)} sub={`${report.byChannel.cash.count} orders`} />
-                  <StatCard icon={CreditCard} label="Card" value={formatQar(report.byChannel.card.amount)} sub={`${report.byChannel.card.count} orders`} />
-                  <StatCard icon={Zap} label="Online (Fawran)" value={formatQar(report.byChannel.online.amount)} sub={`${report.byChannel.online.count} orders`} />
+                  <StatCard
+                    icon={Receipt}
+                    label="Total collected"
+                    value={formatQar(report.collected)}
+                    sub={`${report.paidCount} paid orders${report.byChannel.wallet.count ? ` · ${report.byChannel.wallet.count} from wallet` : ''}`}
+                    tone="primary"
+                  />
+                  <StatCard icon={Banknote} label="Cash" value={formatQar(report.moneyIn.cash)} sub={channelSub(report, 'cash')} />
+                  <StatCard icon={CreditCard} label="Card" value={formatQar(report.moneyIn.card)} sub={channelSub(report, 'card')} />
+                  <StatCard icon={Zap} label="Online (Fawran)" value={formatQar(report.moneyIn.online)} sub={channelSub(report, 'online')} />
                   <StatCard
                     icon={Hourglass}
                     label="Still to collect"
@@ -319,6 +343,19 @@ export default function DayClosePage() {
                   </div>
                 )}
 
+                {walletTxns.error && walletTxns.key === walletKey && (
+                  <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 px-3 py-2" role="alert">
+                    Wallet top-ups could not be loaded ({walletTxns.error}), so they are missing from the totals. Refresh to try again.
+                  </p>
+                )}
+
+                {report.byChannel.wallet.count > 0 && (
+                  <p className="text-xs text-gray-600 bg-gray-50 border border-gray-200 px-3 py-2">
+                    {report.byChannel.wallet.count} order{report.byChannel.wallet.count === 1 ? ' was' : 's were'} paid from customer wallets ({formatQar(report.byChannel.wallet.amount)}).
+                    That money came in with the wallet top-up, so it is not counted again in the total collected.
+                  </p>
+                )}
+
                 {report.byChannel.unspecified.count > 0 && (
                   <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 px-3 py-2">
                     {report.byChannel.unspecified.count} paid order{report.byChannel.unspecified.count === 1 ? ' has' : 's have'} no payment method recorded
@@ -333,7 +370,7 @@ export default function DayClosePage() {
                       {summaryLines(report).map((l) => (
                         <div
                           key={l.label}
-                          className={`flex items-baseline gap-2 py-1.5 ${l.strong ? 'border-t-2 border-gray-300 mt-1 pt-2.5 text-[15px] font-extrabold text-gray-900' : 'text-gray-700'}`}
+                          className={`flex items-baseline gap-2 py-1.5 ${l.strong ? 'border-t-2 border-gray-300 mt-1 pt-2.5 text-[15px] font-extrabold text-gray-900' : l.note ? 'text-gray-500 text-[12px] ps-3' : 'text-gray-700'}`}
                         >
                           <dt>{l.label}</dt>
                           <span className="flex-1 border-b border-dotted border-gray-300 translate-y-[-3px]" aria-hidden="true" />
@@ -346,7 +383,7 @@ export default function DayClosePage() {
                         <dd className="tabular-nums font-semibold">{formatQar(report.stillToCollect.amount)}</dd>
                       </div>
                     </dl>
-                    <p className="text-[10px] text-gray-400 mt-2">Cheque, refunds and cancellations aren&apos;t recorded in the system yet, so they show 0.</p>
+                    <p className="text-[10px] text-gray-400 mt-2">Refunds are wallet balance paid back to customers. Cheque and cancellations aren&apos;t recorded in the system yet, so they show 0.</p>
                   </Panel>
 
                   <Panel icon={Wrench} title="Work done">

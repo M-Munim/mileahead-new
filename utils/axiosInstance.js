@@ -351,6 +351,15 @@ export const walletService = {
 
     /** Super Admin only. body: { phone, amount, payment_method, note } */
     refund: (body) => api.post(API_PATHS.WALLET.REFUND, body),
+
+    /** Pays a whole order from its customer's wallet → { wallet, paid } */
+    payOrder: (bookingId) => api.post(API_PATHS.WALLET.PAY, { booking_id: bookingId }),
+
+    /** Gives a wallet payment back and marks the order unpaid → { wallet, returned } */
+    undoPayment: (bookingId) => api.post(API_PATHS.WALLET.UNDO_PAYMENT, { booking_id: bookingId }),
+
+    /** Wallet changes from..to (YYYY-MM-DD), a day wider each side; filter by local day. */
+    transactions: (from, to) => api.get(API_PATHS.WALLET.TRANSACTIONS, { params: { from, to } }),
 };
 
 // ---------- JOB CARDS ----------
